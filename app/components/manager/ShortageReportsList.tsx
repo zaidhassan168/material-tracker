@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   TextInput,
-  ScrollView,
+  ActivityIndicator, // Added for loading state
 } from "react-native";
 import {
   AlertCircle,
@@ -16,6 +16,8 @@ import {
   SortDesc,
   XCircle,
 } from "lucide-react-native";
+import { collection, onSnapshot, query, orderBy, Timestamp } from "firebase/firestore"; // Added Timestamp
+import { db } from "../../config/firebase"; // Import the db instance
 
 type Priority = "High" | "Medium" | "Low";
 type Status = "New" | "In Progress" | "Ordered" | "Resolved";
@@ -29,13 +31,13 @@ interface ShortageReport {
   priority: Priority;
   status: Status;
   reportedBy: string;
-  reportedAt: string;
+  reportedAt: Timestamp | string; // Allow for Firestore Timestamp or string
   location: string;
   hasPhotos: boolean;
 }
 
 interface ShortageReportsListProps {
-  reports?: ShortageReport[];
+  // Remove reports prop, data will be fetched internally
   onSelectReport?: (report: ShortageReport) => void;
   isOffline?: boolean;
 }
@@ -69,10 +71,12 @@ const getStatusIcon = (status: Status) => {
 };
 
 const ShortageReportsList = ({
-  reports = DEFAULT_REPORTS,
   onSelectReport = () => {},
   isOffline = false,
 }: ShortageReportsListProps) => {
+  const [reports, setReports] = useState<ShortageReport[]>([]); // State for reports
+  const [loading, setLoading] = useState(true); // Loading state
+  const [error, setError] = useState<Error | null>(null); // Error state
   const [searchQuery, setSearchQuery] = useState("");
   const [filterVisible, setFilterVisible] = useState(false);
   const [activeFilters, setActiveFilters] = useState<{
@@ -82,6 +86,48 @@ const ShortageReportsList = ({
     status: null,
     priority: null,
   });
+
+  // Fetch reports from Firestore
+  useEffect(() => {
+    setLoading(true);
+    const reportsCollection = collection(db, "shortageReports"); // Assuming collection name is 'shortageReports'
+    const q = query(reportsCollection, orderBy("reportedAt", "desc")); // Order by reportedAt descending
+
+    const unsubscribe = onSnapshot(
+      q,
+      (querySnapshot) => {
+        const fetchedReports: ShortageReport[] = [];
+        querySnapshot.forEach((doc) => {
+          // Ensure data matches the interface, handle potential missing fields
+          const data = doc.data();
+          fetchedReports.push({
+            id: doc.id,
+            projectName: data.projectName ?? "Unknown Project",
+            materialType: data.materialType ?? "Unknown Material",
+            quantity: data.quantity ?? 0,
+            unit: data.unit ?? "",
+            priority: data.priority ?? "Low",
+            status: data.status ?? "New",
+            reportedBy: data.reportedBy ?? "Unknown User",
+            reportedAt: data.reportedAt, // Keep as Timestamp or string
+            location: data.location ?? "Unknown Location",
+            hasPhotos: data.hasPhotos ?? false,
+          } as ShortageReport); // Type assertion might be needed depending on strictness
+        });
+        setReports(fetchedReports);
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        console.error("Error fetching shortage reports: ", err);
+        setError(err);
+        setLoading(false);
+      }
+    );
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, []); // Empty dependency array ensures this runs only once on mount
 
   const filteredReports = reports.filter((report) => {
     // Search filter
@@ -173,7 +219,7 @@ const ShortageReportsList = ({
   const renderItem = ({ item }: { item: ShortageReport }) => (
     <TouchableOpacity
       className="bg-white p-4 rounded-lg mb-3 shadow-sm border border-gray-100"
-      onPress={() => onSelectReport(item)}
+      onPress={() => onSelectReport && onSelectReport(item)} // Ensure onSelectReport exists before calling
     >
       <View className="flex-row justify-between items-start mb-2">
         <View className="flex-1">
@@ -205,7 +251,11 @@ const ShortageReportsList = ({
         <Text className="text-xs text-gray-500">
           Reported by {item.reportedBy}
         </Text>
-        <Text className="text-xs text-gray-500">{item.reportedAt}</Text>
+        <Text className="text-xs text-gray-500">
+          {item.reportedAt instanceof Timestamp
+            ? item.reportedAt.toDate().toLocaleString() // Format Timestamp
+            : item.reportedAt} {/* Use string directly */}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -246,7 +296,25 @@ const ShortageReportsList = ({
 
         {renderFilterSection()}
 
-        {filteredReports.length > 0 ? (
+        {/* Loading State */}
+        {loading && (
+          <View className="flex-1 items-center justify-center py-10">
+            <ActivityIndicator size="large" color="#0000ff" />
+            <Text className="text-gray-500 mt-2">Loading reports...</Text>
+          </View>
+        )}
+
+        {/* Error State */}
+        {!loading && error && (
+          <View className="flex-1 items-center justify-center py-10">
+            <Text className="text-red-500 text-center">
+              Error loading reports: {error.message}
+            </Text>
+          </View>
+        )}
+
+        {/* Data State */}
+        {!loading && !error && filteredReports.length > 0 ? (
           <FlatList
             data={filteredReports}
             renderItem={renderItem}
@@ -254,88 +322,24 @@ const ShortageReportsList = ({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 20 }}
           />
-        ) : (
-          <View className="items-center justify-center py-10">
+        ) : null}
+
+        {/* Empty State (after loading and no error) */}
+        {!loading && !error && filteredReports.length === 0 && (
+          <View className="flex-1 items-center justify-center py-10">
             <Text className="text-gray-500 text-center">
-              No shortage reports found
+              No shortage reports found.
             </Text>
-            <Text className="text-gray-400 text-center mt-1">
-              Try adjusting your filters
-            </Text>
+            { (activeFilters.priority || activeFilters.status || searchQuery) &&
+              <Text className="text-gray-400 text-center mt-1">
+                Try adjusting your search or filters.
+              </Text>
+            }
           </View>
         )}
       </View>
     </View>
   );
 };
-
-// Default mock data
-const DEFAULT_REPORTS: ShortageReport[] = [
-  {
-    id: "1",
-    projectName: "Downtown Highrise",
-    materialType: "Concrete Mix Type II",
-    quantity: 500,
-    unit: "bags",
-    priority: "High",
-    status: "New",
-    reportedBy: "John Smith",
-    reportedAt: "2023-06-15 09:30 AM",
-    location: "40.7128° N, 74.0060° W",
-    hasPhotos: true,
-  },
-  {
-    id: "2",
-    projectName: "Westside Bridge",
-    materialType: "Steel Rebar 12mm",
-    quantity: 200,
-    unit: "rods",
-    priority: "Medium",
-    status: "In Progress",
-    reportedBy: "Maria Garcia",
-    reportedAt: "2023-06-14 02:15 PM",
-    location: "40.7135° N, 74.0046° W",
-    hasPhotos: true,
-  },
-  {
-    id: "3",
-    projectName: "Suburban Mall",
-    materialType: 'Electrical Conduit 2"',
-    quantity: 150,
-    unit: "meters",
-    priority: "Low",
-    status: "Ordered",
-    reportedBy: "Robert Johnson",
-    reportedAt: "2023-06-13 11:45 AM",
-    location: "40.7112° N, 74.0055° W",
-    hasPhotos: false,
-  },
-  {
-    id: "4",
-    projectName: "Downtown Highrise",
-    materialType: "Window Frames Type A",
-    quantity: 35,
-    unit: "pieces",
-    priority: "High",
-    status: "Resolved",
-    reportedBy: "John Smith",
-    reportedAt: "2023-06-12 10:20 AM",
-    location: "40.7128° N, 74.0060° W",
-    hasPhotos: true,
-  },
-  {
-    id: "5",
-    projectName: "Eastside School",
-    materialType: "Drywall Sheets 4x8",
-    quantity: 75,
-    unit: "sheets",
-    priority: "Medium",
-    status: "New",
-    reportedBy: "Sarah Williams",
-    reportedAt: "2023-06-15 08:00 AM",
-    location: "40.7140° N, 74.0030° W",
-    hasPhotos: false,
-  },
-];
 
 export default ShortageReportsList;

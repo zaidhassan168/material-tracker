@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,8 +8,19 @@ import {
   Image,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
+import { Picker } from "@react-native-picker/picker";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  getDocs,
+  Timestamp,
+} from "firebase/firestore";
+import { db } from "../../config/firebase"; // Assuming your firebase config is exported as 'db'
 import {
   Camera,
   MapPin,
@@ -19,8 +30,15 @@ import {
   X,
 } from "lucide-react-native";
 
+interface Project {
+  id: string;
+  name: string;
+}
+
 const ShortageReportForm = () => {
-  const [project, setProject] = useState({ id: 1, name: "Downtown Highrise" });
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [loadingProjects, setLoadingProjects] = useState(true);
   const [materialType, setMaterialType] = useState("");
   const [quantity, setQuantity] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high" | null>(
@@ -30,8 +48,9 @@ const ShortageReportForm = () => {
   const [photos, setPhotos] = useState<string[]>([]);
   const [location, setLocation] = useState<string | null>(null);
   const [showMaterialDropdown, setShowMaterialDropdown] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Mock material options
+  // Mock material options - Consider fetching these from Firestore too if dynamic
   const materialOptions = [
     "Concrete",
     "Steel Rebar",
@@ -45,7 +64,32 @@ const ShortageReportForm = () => {
     "Paint",
   ];
 
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const projectsCol = collection(db, "projects");
+        const projectSnapshot = await getDocs(projectsCol);
+        const projectList = projectSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as { name: string }), // Assuming project docs have a 'name' field
+        }));
+        setProjects(projectList);
+        if (projectList.length > 0) {
+          setSelectedProjectId(projectList[0].id); // Default to first project
+        }
+      } catch (error) {
+        console.error("Error fetching projects: ", error);
+        Alert.alert("Error", "Could not fetch projects.");
+      } finally {
+        setLoadingProjects(false);
+      }
+    };
+
+    fetchProjects();
+  }, []);
+
   const handleAddPhoto = () => {
+    // TODO: Implement actual photo capture/selection
     // In a real app, this would open the camera or photo library
     // For demo purposes, we'll add a placeholder image URL
     setPhotos([
@@ -68,17 +112,40 @@ const ShortageReportForm = () => {
     );
   };
 
-  const handleSubmit = () => {
-    // Validate form
-    if (!materialType || !quantity || !priority) {
-      alert("Please fill in all required fields");
+  const handleSubmit = async () => {
+    if (!selectedProjectId || !materialType || !quantity || !priority) {
+      Alert.alert("Validation Error", "Please fill in all required fields.");
       return;
     }
 
-    // In a real app, this would send the data to an API
-    // For demo purposes, we'll just navigate back
-    alert("Report submitted successfully!");
-    router.back();
+    setIsSubmitting(true);
+
+    try {
+      const reportData = {
+        projectId: selectedProjectId,
+        materialType,
+        quantity,
+        priority,
+        notes,
+        photos, // TODO: Upload photos to Firebase Storage and store URLs instead
+        location,
+        status: "pending", // Initial status
+        reportedAt: Timestamp.now(),
+        // Add reporter info if available (e.g., from auth state)
+        // reporterId: auth.currentUser.uid,
+      };
+
+      const reportsCol = collection(db, "shortageReports");
+      await addDoc(reportsCol, reportData);
+
+      Alert.alert("Success", "Report submitted successfully!");
+      router.back();
+    } catch (error) {
+      console.error("Error submitting report: ", error);
+      Alert.alert("Error", "Could not submit report. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -96,12 +163,30 @@ const ShortageReportForm = () => {
           </Text>
         </View>
 
-        <ScrollView className="flex-1 p-4">
+        <ScrollView className="flex-1 p-4" keyboardShouldPersistTaps="handled">
           <View className="bg-white rounded-lg p-4 mb-4 shadow-sm">
-            <Text className="font-bold text-lg mb-2">Project</Text>
-            <View className="border border-gray-300 rounded-lg p-3 mb-4">
-              <Text>{project.name}</Text>
-            </View>
+            <Text className="font-bold text-lg mb-2">
+              Project <Text className="text-red-500">*</Text>
+            </Text>
+            {loadingProjects ? (
+              <ActivityIndicator size="small" color="#3B82F6" className="my-4" />
+            ) : projects.length === 0 ? (
+              <Text className="text-gray-500 p-3 border border-gray-300 rounded-lg mb-4">
+                No projects available. Contact manager.
+              </Text>
+            ) : (
+              <View className="border border-gray-300 rounded-lg mb-4">
+                <Picker
+                  selectedValue={selectedProjectId}
+                  onValueChange={(itemValue) => setSelectedProjectId(itemValue)}
+                  style={{ height: 50, width: '100%' }} // Adjust styling as needed
+                >
+                  {projects.map((proj) => (
+                    <Picker.Item key={proj.id} label={proj.name} value={proj.id} />
+                  ))}
+                </Picker>
+              </View>
+            )}
 
             <Text className="font-bold text-lg mb-2">
               Material Type <Text className="text-red-500">*</Text>
@@ -239,12 +324,17 @@ const ShortageReportForm = () => {
             )}
 
             <TouchableOpacity
-              className="bg-blue-600 p-4 rounded-lg"
+              className={`bg-blue-600 p-4 rounded-lg ${isSubmitting ? "opacity-50" : ""}`}
               onPress={handleSubmit}
+              disabled={isSubmitting || loadingProjects || projects.length === 0}
             >
-              <Text className="text-white text-center font-bold">
-                Submit Report
-              </Text>
+              {isSubmitting ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text className="text-white text-center font-bold">
+                  Submit Report
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         </ScrollView>

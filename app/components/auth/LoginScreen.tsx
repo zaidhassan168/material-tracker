@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,39 +7,64 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator, // Added for loading state
 } from "react-native";
 import { router } from "expo-router";
-import { Lock, User } from "lucide-react-native";
+import { Lock, Mail } from "lucide-react-native"; // Changed User to Mail
+import { auth } from "../../config/firebase"; // Import Firebase auth
+import { signInWithEmailAndPassword } from "firebase/auth"; // Import Firebase auth functions, removed onAuthStateChanged as it's handled in _layout
 
 const LoginScreen = () => {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState(""); // Changed username to email
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [role, setRole] = useState<"engineer" | "manager" | null>(null);
+  const [loading, setLoading] = useState(false); // Added loading state
 
-  const handleLogin = () => {
-    if (!username || !password) {
-      setError("Please enter both username and password");
+  // Redirect if already logged in (optional, better handled in _layout)
+  // useEffect(() => {
+  //   const unsubscribe = onAuthStateChanged(auth, (user) => {
+  //     if (user) {
+  //       // User is signed in, decide where to redirect based on role or default
+  //       // This logic might be better placed in a higher-level component like _layout.tsx
+  //       // For now, let's assume a default redirect or role check happens elsewhere
+  //       // router.replace('/engineer'); // Example redirect
+  //     }
+  //   });
+  //   return unsubscribe; // Cleanup subscription on unmount
+  // }, []);
+
+
+  const handleLogin = async () => { // Made async
+    if (!email || !password) { // Changed username to email
+      setError("Please enter both email and password");
       return;
     }
 
-    if (!role) {
-      setError("Please select a role");
-      return;
-    }
+    setError(""); // Clear previous errors
+    setLoading(true); // Start loading
 
-    // Mock authentication - in a real app, this would call an API
-    if (username === "demo" && password === "password") {
-      // Navigate based on role
-      if (role === "engineer") {
-        router.replace("/engineer");
-      } else {
-        router.replace("/manager");
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      // Login successful, navigation will be handled by the global auth listener in _layout.tsx
+      console.log("Login successful:", userCredential.user.uid);
+      // No need to navigate here, the listener in _layout will handle it.
+    } catch (err: any) {
+      console.error("Login Error:", err);
+      // Provide more specific error messages based on Firebase error codes
+      let errorMessage = "Login failed. Please check your credentials.";
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        errorMessage = "Invalid email or password.";
+      } else if (err.code === 'auth/invalid-email') {
+        errorMessage = "Please enter a valid email address.";
+      } else if (err.code === 'auth/too-many-requests') {
+        errorMessage = "Too many login attempts. Please try again later.";
       }
-    } else {
-      setError("Invalid credentials");
+      setError(errorMessage);
+    } finally {
+      setLoading(false); // Stop loading
     }
   };
+
 
   return (
     <KeyboardAvoidingView
@@ -62,12 +87,13 @@ const LoginScreen = () => {
 
         <View className="mb-4">
           <View className="flex-row items-center border border-gray-300 rounded-lg p-3 mb-4">
-            <User size={20} color="#4B5563" />
+            <Mail size={20} color="#4B5563" /> {/* Changed icon */}
             <TextInput
               className="flex-1 ml-2 text-base"
-              placeholder="Username"
-              value={username}
-              onChangeText={setUsername}
+              placeholder="Email" // Changed placeholder
+              value={email} // Changed state variable
+              onChangeText={setEmail} // Changed state setter
+              keyboardType="email-address" // Added keyboard type
               autoCapitalize="none"
             />
           </View>
@@ -84,42 +110,35 @@ const LoginScreen = () => {
           </View>
         </View>
 
-        <Text className="text-gray-700 mb-2">Select your role:</Text>
-        <View className="flex-row mb-6">
-          <TouchableOpacity
-            className={`flex-1 p-3 rounded-lg mr-2 ${role === "engineer" ? "bg-blue-600" : "bg-gray-200"}`}
-            onPress={() => setRole("engineer")}
-          >
-            <Text
-              className={`text-center font-medium ${role === "engineer" ? "text-white" : "text-gray-700"}`}
-            >
-              Engineer
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            className={`flex-1 p-3 rounded-lg ml-2 ${role === "manager" ? "bg-blue-600" : "bg-gray-200"}`}
-            onPress={() => setRole("manager")}
-          >
-            <Text
-              className={`text-center font-medium ${role === "manager" ? "text-white" : "text-gray-700"}`}
-            >
-              Manager
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* Role selection removed - Role should be determined after login, possibly from Firestore */}
 
         <TouchableOpacity
-          className="bg-blue-600 p-4 rounded-lg"
+          className={`p-4 rounded-lg ${loading ? "bg-blue-400" : "bg-blue-600"}`} // Adjusted style for loading
           onPress={handleLogin}
+          disabled={loading} // Disable button while loading
         >
-          <Text className="text-white text-center font-bold text-lg">
-            Login
-          </Text>
+          {loading ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <Text className="text-white text-center font-bold text-lg">
+              Login
+            </Text>
+          )}
         </TouchableOpacity>
 
-        <Text className="text-center mt-6 text-gray-500">
-          Demo credentials: username "demo", password "password"
-        </Text>
+        {/* Removed demo credentials text */}
+
+        <TouchableOpacity
+          className="mt-6" // Add some margin top
+          onPress={() => {
+            console.log("Sign Up button pressed, attempting navigation to /signup"); // Add console log
+            router.push('/signup');
+          }}
+        >
+          <Text className="text-blue-600 text-center text-base">
+            Don't have an account? Sign Up
+          </Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );

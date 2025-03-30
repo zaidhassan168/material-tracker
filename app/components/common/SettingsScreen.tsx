@@ -1,6 +1,8 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Switch } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Switch, Alert } from "react-native"; // Added Alert
 import { router } from "expo-router";
+import { getAuth, signOut } from "firebase/auth"; // Added Firebase auth imports
+import { app } from "../../config/firebase"; // Added Firebase app import
 import {
   ArrowLeft,
   Bell,
@@ -22,9 +24,16 @@ const SettingsScreen = () => {
   const [offlineMode, setOfflineMode] = useState(false);
   const [dataUsage, setDataUsage] = useState("wifi"); // "wifi" or "all"
 
-  const handleLogout = () => {
-    // In a real app, this would clear auth tokens and navigate to login
-    router.replace("/");
+  const handleLogout = async () => { // Made async
+    const auth = getAuth(app);
+    try {
+      await signOut(auth);
+      // Successfully signed out, navigate to login/home
+      router.replace("/"); // Navigate to the root/login screen
+    } catch (error) {
+      console.error("Error signing out: ", error);
+      Alert.alert("Logout Error", "Could not log out. Please try again."); // Show error to user
+    }
   };
 
   const renderSettingItem = (

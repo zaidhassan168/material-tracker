@@ -1,13 +1,9 @@
-import React, { useState } from "react";
-import { View, Text, FlatList, TouchableOpacity, Image } from "react-native";
-import {
-  Search,
-  Filter,
-  MapPin,
-  Clock,
-  AlertTriangle,
-} from "lucide-react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, FlatList, TouchableOpacity, Image, ActivityIndicator } from "react-native";
 import { TextInput } from "react-native-gesture-handler";
+import { Search, Filter, MapPin, Clock, AlertTriangle } from "lucide-react-native";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { db } from "../../config/firebase";
 
 interface Project {
   id: string;
@@ -20,60 +16,60 @@ interface Project {
 }
 
 interface ProjectListProps {
-  projects?: Project[];
   onSelectProject?: (project: Project) => void;
 }
 
 const ProjectList = ({
-  projects = [
-    {
-      id: "1",
-      name: "Downtown Highrise",
-      location: "123 Main St, Metropolis",
-      dueDate: "2023-12-15",
-      priority: "High" as const,
-      shortageCount: 5,
-      imageUrl:
-        "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=400&q=80",
-    },
-    {
-      id: "2",
-      name: "Riverside Apartments",
-      location: "456 River Rd, Metropolis",
-      dueDate: "2024-02-28",
-      priority: "Medium" as const,
-      shortageCount: 2,
-      imageUrl:
-        "https://images.unsplash.com/photo-1590725121839-892b458a74fe?w=400&q=80",
-    },
-    {
-      id: "3",
-      name: "City Park Renovation",
-      location: "789 Park Ave, Metropolis",
-      dueDate: "2023-11-30",
-      priority: "Low" as const,
-      shortageCount: 0,
-      imageUrl:
-        "https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=400&q=80",
-    },
-  ],
   onSelectProject = () => {},
 }: ProjectListProps) => {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredProjects, setFilteredProjects] = useState(projects);
+
+  useEffect(() => {
+    setLoading(true);
+    const projectsCollection = collection(db, "projects");
+    const q = query(projectsCollection, orderBy("dueDate", "asc"));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const fetchedProjects: Project[] = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            name: data.name,
+            location: data.location,
+            dueDate:
+              typeof data.dueDate === "string"
+                ? data.dueDate
+                : new Date(data.dueDate.seconds * 1000).toISOString(),
+            priority: data.priority,
+            shortageCount: data.shortageCount,
+            imageUrl: data.imageUrl,
+          };
+        });
+        setProjects(fetchedProjects);
+        setLoading(false);
+        setError(null);
+      },
+      (err) => {
+        setError(err);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const filteredProjects = projects.filter(
+    (project) =>
+      project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      project.location.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
-    if (text.trim() === "") {
-      setFilteredProjects(projects);
-    } else {
-      const filtered = projects.filter(
-        (project) =>
-          project.name.toLowerCase().includes(text.toLowerCase()) ||
-          project.location.toLowerCase().includes(text.toLowerCase()),
-      );
-      setFilteredProjects(filtered);
-    }
   };
 
   const getPriorityColor = (priority: string) => {
@@ -102,12 +98,8 @@ const ProjectList = ({
       <View className="p-4">
         <View className="flex-row justify-between items-center mb-2">
           <Text className="text-xl font-bold text-gray-800">{item.name}</Text>
-          <View
-            className={`${getPriorityColor(item.priority)} px-2 py-1 rounded-full`}
-          >
-            <Text className="text-white text-xs font-medium">
-              {item.priority}
-            </Text>
+          <View className={`${getPriorityColor(item.priority)} px-2 py-1 rounded-full`}>
+            <Text className="text-white text-xs font-medium">{item.priority}</Text>
           </View>
         </View>
 
@@ -151,7 +143,18 @@ const ProjectList = ({
         </TouchableOpacity>
       </View>
 
-      {filteredProjects.length === 0 ? (
+      {loading ? (
+        <View className="flex-1 justify-center items-center">
+          <ActivityIndicator size="large" color="#0000ff" />
+          <Text className="text-gray-500 mt-2">Loading projects...</Text>
+        </View>
+      ) : error ? (
+        <View className="flex-1 justify-center items-center">
+          <Text className="text-red-500 text-lg">
+            Error loading projects: {error.message}
+          </Text>
+        </View>
+      ) : filteredProjects.length === 0 ? (
         <View className="flex-1 justify-center items-center">
           <Text className="text-gray-500 text-lg">No projects found</Text>
         </View>
