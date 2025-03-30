@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "test-tempo",
-    "slug": "test-tempo",
+    "slug": "material-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,13 +9,19 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "supportsTablet": true,
+      "permissions": [
+        "notifications"
+      ]
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "useNextNotificationsApi": true
     },
     "web": {
       "bundler": "metro",
@@ -24,6 +30,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-notifications",
       [
         "expo-splash-screen",
         {
@@ -34,8 +41,21 @@
         }
       ]
     ],
+    "notification": {
+      "icon": "./assets/images/notification-icon.png",
+      "color": "#ffffff"
+    },
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "40696e80-5086-472e-a78b-1d80df32a002"
+      },
+      "router": {
+        "origin": false
+      }
+    },
+    "owner": "zaidhassan71"
   }
 }

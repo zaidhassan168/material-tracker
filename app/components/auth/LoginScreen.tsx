@@ -115,7 +115,7 @@ const LoginScreen = () => {
         if (token && user) {
           const userDocRef = doc(db, "users", user.uid);
           await updateDoc(userDocRef, {
-            pushToken: token, // Field name to store the token
+            expoPushToken: token, // Field name to store the token
             updatedAt: new Date(), // Optional: track last update
           });
           console.log("Push token saved successfully for user:", user.uid);

@@ -13,6 +13,8 @@ import { auth, db } from "./config/firebase"; // Corrected import path, added db
 import { onAuthStateChanged, User } from "firebase/auth"; // Import auth functions
 import { doc, getDoc } from "firebase/firestore"; // Import Firestore functions
 import { Platform, ActivityIndicator, View } from "react-native"; // Added ActivityIndicator, View
+import { registerForPushNotificationsAsync } from "./config/notifications";
+import * as Notifications from "expo-notifications";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -51,6 +53,24 @@ export default function RootLayout() {
       }
     }
   }, []); // Empty dependency array ensures this runs only once
+
+  // Register for push notifications
+  useEffect(() => {
+    registerForPushNotificationsAsync().then(token => {
+      if (token) {
+        console.log("Expo push token:", token);
+        // Optionally send token to backend here
+      }
+    });
+
+    const subscription = Notifications.addNotificationReceivedListener(notification => {
+      console.log("Notification received:", notification);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   // Firebase Auth Listener (separated)
   useEffect(() => {

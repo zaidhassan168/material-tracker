@@ -136,12 +136,41 @@ const ShortageReportForm = () => {
       const docRef = await addDoc(reportsCol, reportData); // Get docRef if needed
 
       // --- PUSH NOTIFICATION LOGIC ---
-      // TODO: Implement push notification trigger here
-      // 1. Get manager tokens (from Firestore 'users' collection where role === 'manager')
-      // 2. Construct notification payload (title, body, data like reportId: docRef.id)
-      // 3. Send notification using Expo Push Notifications API or Firebase Cloud Messaging (FCM)
-      console.log("Report submitted:", docRef.id, "Trigger push notification for managers.");
-      // Example: await sendPushNotificationToManagers(docRef.id, materialType, projectId);
+      try {
+        const usersSnapshot = await getDocs(collection(db, "users"));
+        const managerTokens: string[] = [];
+
+        usersSnapshot.forEach((doc) => {
+          const user = doc.data();
+          if (user.role === "manager" && user.expoPushToken) {
+            managerTokens.push(user.expoPushToken);
+          }
+        });
+
+        const messages = managerTokens.map((token) => ({
+          to: token,
+          sound: "default",
+          title: "New Shortage Report",
+          body: `Material: ${materialType}, Priority: ${priority}`,
+          data: { reportId: docRef.id, projectId },
+        }));
+
+        await Promise.all(
+          messages.map((message) =>
+            fetch("https://exp.host/--/api/v2/push/send", {
+              method: "POST",
+              headers: {
+                Accept: "application/json",
+                "Accept-encoding": "gzip, deflate",
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(message),
+            })
+          )
+        );
+      } catch (notifError) {
+        console.error("Failed to send push notifications:", notifError);
+      }
       // --------------------------------
 
       Alert.alert("Success", "Report submitted successfully!");

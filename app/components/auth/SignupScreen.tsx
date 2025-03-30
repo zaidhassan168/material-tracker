@@ -4,6 +4,7 @@ import { Picker } from '@react-native-picker/picker'; // Assuming picker is inst
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../config/firebase'; // Assuming db is exported from firebase config
+import { registerForPushNotificationsAsync } from '../../config/notifications';
 import { router } from 'expo-router'; // Import router
 
 
@@ -29,11 +30,15 @@ const SignupScreen = () => { // Remove navigation prop
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Store user role in Firestore
+      // Register for push notifications and store token
+      const expoPushToken = await registerForPushNotificationsAsync();
+
+      // Store user role and token in Firestore
       await setDoc(doc(db, "users", user.uid), {
         email: user.email,
         role: role,
-        uid: user.uid
+        uid: user.uid,
+        expoPushToken: expoPushToken || null
       });
 
       Alert.alert("Success", "Account created successfully!");

@@ -34,6 +34,7 @@ import {
   AlertCircle, // For error display
 } from "lucide-react-native";
 import OfflineBanner from "../common/OfflineBanner";
+import { registerForPushNotificationsAsync } from "../../config/notifications";
 
 // Define interfaces for Firestore data
 interface Project {
@@ -76,6 +77,12 @@ const ManagerDashboard = () => {
   const [loadingReports, setLoadingReports] = useState(true);
   const [errorProjects, setErrorProjects] = useState<Error | null>(null);
   const [errorReports, setErrorReports] = useState<Error | null>(null);
+  const [pushToken, setPushToken] = useState<string | undefined>(undefined);
+  
+  const handleTestPushToken = async () => {
+    const token = await registerForPushNotificationsAsync();
+    setPushToken(token);
+  };
 
   // --- Data Fetching ---
 
@@ -283,6 +290,12 @@ const ManagerDashboard = () => {
         </View>
       </View>
 
+      <View className="bg-blue-100 p-2 mx-4 my-2 rounded">
+        <TouchableOpacity onPress={handleTestPushToken} className="bg-blue-600 p-2 rounded">
+          <Text className="text-white text-center">Test Push Token</Text>
+        </TouchableOpacity>
+        {pushToken && <Text className="mt-2 text-center text-xs text-gray-800">Push Token: {pushToken}</Text>}
+      </View>
       {/* Add Project Modal */}
       <Modal
         animationType="slide"
