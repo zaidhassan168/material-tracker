@@ -1,50 +1,64 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   RefreshControl,
+  ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
-import { PlusCircle, Settings, Bell, ClipboardList } from "lucide-react-native";
+import { PlusCircle, Settings, Bell } from "lucide-react-native"; // Removed ClipboardList
+import { collection, getDocs, getFirestore } from "firebase/firestore";
+import { db } from "../../config/firebase"; // Assuming firebase config is exported as db
 import OfflineBanner from "../common/OfflineBanner";
 
-const EngineerDashboard = () => {
-  const [isOnline, setIsOnline] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [projects, setProjects] = useState([
-    {
-      id: 1,
-      name: "Downtown Highrise",
-      location: "123 Main St",
-      pendingReports: 2,
-    },
-    {
-      id: 2,
-      name: "Westside Mall",
-      location: "456 Commerce Ave",
-      pendingReports: 0,
-    },
-    {
-      id: 3,
-      name: "Harbor Bridge",
-      location: "789 Waterfront Dr",
-      pendingReports: 1,
-    },
-  ]);
+interface Project {
+  id: string;
+  name: string;
+  location: string;
+  // Add other relevant project fields if needed
+}
 
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    // Simulate fetching data
-    setTimeout(() => {
+const EngineerDashboard = () => {
+  const [isOnline, setIsOnline] = useState(true); // Assuming online status detection exists elsewhere
+  const [refreshing, setRefreshing] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchProjects = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const projectsCol = collection(db, "projects"); // Use 'projects' collection
+      const projectSnapshot = await getDocs(projectsCol);
+      const projectsList = projectSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Project[]; // Type assertion might be needed based on your data structure
+      setProjects(projectsList);
+    } catch (err) {
+      console.error("Error fetching projects:", err);
+      setError("Failed to load projects. Please try again.");
+    } finally {
+      setLoading(false);
       setRefreshing(false);
-    }, 1000);
+    }
   }, []);
 
-  const navigateToReportForm = (projectId: number) => {
-    // In a real app, you would pass the project ID to the form
-    router.push("/report-form");
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchProjects();
+  }, [fetchProjects]);
+
+  const navigateToReportForm = (projectId: string) => {
+    // Pass project ID as a query parameter
+    router.push({ pathname: "/report-form", params: { projectId } });
   };
 
   const navigateToSettings = () => {
@@ -90,59 +104,31 @@ const EngineerDashboard = () => {
             Select a project to report material shortages
           </Text>
 
-          {projects.map((project) => (
+          {loading && <ActivityIndicator size="large" color="#2563EB" />}
+          {error && <Text className="text-red-500 text-center">{error}</Text>}
+
+          {!loading && !error && projects.length === 0 && (
+            <Text className="text-gray-500 text-center">No projects found.</Text>
+          )}
+
+          {!loading && !error && projects.map((project) => (
             <TouchableOpacity
               key={project.id}
               className="border border-gray-200 rounded-lg p-4 mb-3 flex-row justify-between items-center"
-              onPress={() => navigateToReportForm(project.id)}
+              onPress={() => navigateToReportForm(project.id)} // Pass project ID
             >
               <View>
                 <Text className="font-bold text-lg">{project.name}</Text>
                 <Text className="text-gray-600">{project.location}</Text>
               </View>
-              <View className="flex-row items-center">
-                {project.pendingReports > 0 && (
-                  <View className="bg-orange-500 rounded-full px-2 py-1 mr-2">
-                    <Text className="text-white text-xs">
-                      {project.pendingReports}
-                    </Text>
-                  </View>
-                )}
-                <PlusCircle color="#2563EB" size={24} />
-              </View>
+              {/* Removed pending reports count and icon */}
+              <PlusCircle color="#2563EB" size={24} />
             </TouchableOpacity>
           ))}
         </View>
-
-        <View className="bg-white rounded-lg p-4 mb-4 shadow-sm">
-          <Text className="text-lg font-bold mb-2">Recent Reports</Text>
-          <View className="border-l-4 border-orange-500 pl-3 py-2 mb-3">
-            <Text className="font-bold">Concrete Mix - Low Stock</Text>
-            <Text className="text-gray-600">
-              Downtown Highrise • 2 hours ago
-            </Text>
-            <Text className="text-orange-600 mt-1">Pending</Text>
-          </View>
-          <View className="border-l-4 border-green-500 pl-3 py-2 mb-3">
-            <Text className="font-bold">Steel Rebar - Out of Stock</Text>
-            <Text className="text-gray-600">Harbor Bridge • 1 day ago</Text>
-            <Text className="text-green-600 mt-1">Resolved</Text>
-          </View>
-          <TouchableOpacity>
-            <View className="flex-row items-center justify-center mt-2">
-              <ClipboardList size={16} color="#4B5563" />
-              <Text className="text-gray-600 ml-1">View all reports</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+        {/* Removed Recent Reports section */}
       </ScrollView>
-
-      <TouchableOpacity
-        className="absolute bottom-6 right-6 bg-blue-600 w-14 h-14 rounded-full items-center justify-center shadow-lg"
-        onPress={() => router.push("/report-form")}
-      >
-        <PlusCircle color="white" size={30} />
-      </TouchableOpacity>
+      {/* Removed Floating Action Button */}
     </View>
   );
 };

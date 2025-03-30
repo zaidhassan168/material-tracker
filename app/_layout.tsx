@@ -128,18 +128,22 @@ export default function RootLayout() {
       console.log(`Redirecting logged-in user with role '${userRole}' from public route to ${targetRoute}...`);
       router.replace(targetRoute);
     } else if (user && inProtectedRoute) {
-        // Logged in and in a protected route, check if it matches their role
-        const currentAppArea = segments[0]; // e.g., 'manager' or 'engineer'
-        const expectedAppArea = userRole === 'manager' ? 'manager' : 'engineer';
-        if (currentAppArea !== expectedAppArea) {
-            // Mismatch between current location and user role (e.g., manager somehow landed on /engineer)
-            const targetRoute = expectedAppArea === 'manager' ? '/manager' : '/engineer';
-            console.warn(`Role/Route mismatch! User role '${userRole}' is on '/${currentAppArea}'. Redirecting to ${targetRoute}...`);
-            router.replace(targetRoute);
-        } else {
-             console.log("No redirect needed (logged in, role matches current protected route).");
-        }
+        // Logged in and in a protected route.
+        const currentRouteBase = segments[0]; // e.g., 'manager', 'engineer', 'settings'
+        const expectedDashboard = userRole === 'manager' ? 'manager' : 'engineer';
+        const sharedProtectedRoutes = ['settings', 'notifications', 'report-detail', 'report-form']; // Add any other shared routes
 
+        // Check if the user is trying to access the *other* role's main dashboard area
+        // while allowing access to shared routes.
+        if (!sharedProtectedRoutes.includes(currentRouteBase) && currentRouteBase !== expectedDashboard) {
+            // User is in a protected route that isn't shared AND doesn't match their expected dashboard
+            // Example: Manager ('manager') trying to access '/engineer'
+            console.warn(`Role/Route mismatch! User role '${userRole}' trying to access '/${currentRouteBase}'. Redirecting to /${expectedDashboard}...`);
+            router.replace(`/${expectedDashboard}`);
+        } else {
+             // User is either on their correct dashboard OR on a shared protected route. No redirect needed.
+             console.log(`No redirect needed (logged in, role '${userRole}' is on allowed route '/${segments.join('/')}').`);
+        }
     } else {
        console.log("No redirect needed (logged out on public route).");
     }

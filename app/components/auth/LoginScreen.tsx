@@ -7,12 +7,73 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator, // Added for loading state
+  ActivityIndicator,
+  Alert, // Added for notification permission feedback
 } from "react-native";
 import { router } from "expo-router";
-import { Lock, Mail } from "lucide-react-native"; // Changed User to Mail
-import { auth } from "../../config/firebase"; // Import Firebase auth
-import { signInWithEmailAndPassword } from "firebase/auth"; // Import Firebase auth functions, removed onAuthStateChanged as it's handled in _layout
+import { Lock, Mail } from "lucide-react-native";
+import { auth, db } from "../../config/firebase"; // Import Firebase auth and db
+import { signInWithEmailAndPassword } from "firebase/auth";
+import * as Notifications from "expo-notifications"; // Import Expo Notifications
+import Constants from "expo-constants"; // To check if it's a physical device
+import { doc, updateDoc } from "firebase/firestore"; // Import Firestore functions
+
+// Configure notification handler (optional but recommended)
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
+
+// Function to register for push notifications
+async function registerForPushNotificationsAsync(): Promise<string | null> {
+  let token;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+    });
+  }
+
+  if (Constants.isDevice) {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      Alert.alert('Permission Denied', 'Failed to get push token for push notification!');
+      return null;
+    }
+    // Learn more about projectId: https://docs.expo.dev/push-notifications/push-notifications-setup/#configure-projectid
+    // EAS project ID is required for Expo Push Notifications.
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+        Alert.alert('Configuration Error', 'Missing EAS project ID in app config. Cannot get push token.');
+        return null;
+    }
+    try {
+        token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+        console.log("Expo Push Token:", token);
+    } catch (e) {
+        console.error("Error getting Expo push token:", e);
+        Alert.alert('Error', 'Could not get push token.');
+        return null;
+    }
+  } else {
+    Alert.alert('Must use physical device for Push Notifications');
+    return null;
+  }
+
+  return token;
+}
+
 
 const LoginScreen = () => {
   const [email, setEmail] = useState(""); // Changed username to email
@@ -45,9 +106,30 @@ const LoginScreen = () => {
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // Login successful, navigation will be handled by the global auth listener in _layout.tsx
-      console.log("Login successful:", userCredential.user.uid);
-      // No need to navigate here, the listener in _layout will handle it.
+      const user = userCredential.user;
+      console.log("Login successful:", user.uid);
+
+      // --- Register for Push Notifications and Save Token ---
+      try {
+        const token = await registerForPushNotificationsAsync();
+        if (token && user) {
+          const userDocRef = doc(db, "users", user.uid);
+          await updateDoc(userDocRef, {
+            pushToken: token, // Field name to store the token
+            updatedAt: new Date(), // Optional: track last update
+          });
+          console.log("Push token saved successfully for user:", user.uid);
+        } else if (user) {
+            console.log("Could not get push token, skipping Firestore update for user:", user.uid);
+        }
+      } catch (tokenError) {
+        console.error("Error registering/saving push token:", tokenError);
+        // Decide if login should still proceed or show an error
+        // Alert.alert("Notification Setup Failed", "Could not set up push notifications, but login was successful.");
+      }
+      // --- End Push Notification Logic ---
+
+      // Navigation is handled by the listener in _layout.tsx
     } catch (err: any) {
       console.error("Login Error:", err);
       // Provide more specific error messages based on Firebase error codes

@@ -11,8 +11,8 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { router } from "expo-router";
-import { Picker } from "@react-native-picker/picker";
+import { router, useLocalSearchParams } from "expo-router"; // Import useLocalSearchParams
+// Remove Picker import if no longer needed
 import {
   getFirestore,
   collection,
@@ -30,15 +30,17 @@ import {
   X,
 } from "lucide-react-native";
 
-interface Project {
-  id: string;
-  name: string;
-}
+// Remove Project interface if not fetching projects list anymore
 
 const ShortageReportForm = () => {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [loadingProjects, setLoadingProjects] = useState(true);
+  // Get projectId from route params
+  const { projectId } = useLocalSearchParams<{ projectId: string }>();
+
+  // Remove state related to fetching projects list
+  // const [projects, setProjects] = useState<Project[]>([]);
+  // const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  // const [loadingProjects, setLoadingProjects] = useState(true);
+
   const [materialType, setMaterialType] = useState("");
   const [quantity, setQuantity] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high" | null>(
@@ -64,29 +66,20 @@ const ShortageReportForm = () => {
     "Paint",
   ];
 
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const projectsCol = collection(db, "projects");
-        const projectSnapshot = await getDocs(projectsCol);
-        const projectList = projectSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...(doc.data() as { name: string }), // Assuming project docs have a 'name' field
-        }));
-        setProjects(projectList);
-        if (projectList.length > 0) {
-          setSelectedProjectId(projectList[0].id); // Default to first project
-        }
-      } catch (error) {
-        console.error("Error fetching projects: ", error);
-        Alert.alert("Error", "Could not fetch projects.");
-      } finally {
-        setLoadingProjects(false);
-      }
-    };
+  // Remove useEffect for fetching projects
+  // useEffect(() => { ... }, []);
 
-    fetchProjects();
-  }, []);
+  // Display project ID (or fetch project name if needed)
+  useEffect(() => {
+    if (!projectId) {
+      Alert.alert("Error", "Project ID is missing. Please go back and select a project.");
+      // Optionally navigate back if projectId is crucial and missing
+      // router.back();
+    }
+    // You could fetch the project details here using the projectId if you need the name
+    // e.g., fetchProjectDetails(projectId);
+  }, [projectId]);
+
 
   const handleAddPhoto = () => {
     // TODO: Implement actual photo capture/selection
@@ -113,8 +106,12 @@ const ShortageReportForm = () => {
   };
 
   const handleSubmit = async () => {
-    if (!selectedProjectId || !materialType || !quantity || !priority) {
-      Alert.alert("Validation Error", "Please fill in all required fields.");
+    // Use projectId from params
+    if (!projectId || !materialType || !quantity || !priority) {
+      Alert.alert(
+        "Validation Error",
+        "Project ID missing or required fields not filled.",
+      );
       return;
     }
 
@@ -122,7 +119,7 @@ const ShortageReportForm = () => {
 
     try {
       const reportData = {
-        projectId: selectedProjectId,
+        projectId: projectId, // Use projectId from route params
         materialType,
         quantity,
         priority,
@@ -136,7 +133,16 @@ const ShortageReportForm = () => {
       };
 
       const reportsCol = collection(db, "shortageReports");
-      await addDoc(reportsCol, reportData);
+      const docRef = await addDoc(reportsCol, reportData); // Get docRef if needed
+
+      // --- PUSH NOTIFICATION LOGIC ---
+      // TODO: Implement push notification trigger here
+      // 1. Get manager tokens (from Firestore 'users' collection where role === 'manager')
+      // 2. Construct notification payload (title, body, data like reportId: docRef.id)
+      // 3. Send notification using Expo Push Notifications API or Firebase Cloud Messaging (FCM)
+      console.log("Report submitted:", docRef.id, "Trigger push notification for managers.");
+      // Example: await sendPushNotificationToManagers(docRef.id, materialType, projectId);
+      // --------------------------------
 
       Alert.alert("Success", "Report submitted successfully!");
       router.back();
@@ -165,28 +171,15 @@ const ShortageReportForm = () => {
 
         <ScrollView className="flex-1 p-4" keyboardShouldPersistTaps="handled">
           <View className="bg-white rounded-lg p-4 mb-4 shadow-sm">
-            <Text className="font-bold text-lg mb-2">
-              Project <Text className="text-red-500">*</Text>
-            </Text>
-            {loadingProjects ? (
-              <ActivityIndicator size="small" color="#3B82F6" className="my-4" />
-            ) : projects.length === 0 ? (
-              <Text className="text-gray-500 p-3 border border-gray-300 rounded-lg mb-4">
-                No projects available. Contact manager.
+            {/* Display Project ID or Name (if fetched) */}
+            <Text className="font-bold text-lg mb-2">Project</Text>
+            <View className="border border-gray-300 rounded-lg p-3 mb-4 bg-gray-100">
+              <Text className="text-gray-700">
+                {projectId || "Loading project..."}
+                {/* Replace with project name if fetched */}
               </Text>
-            ) : (
-              <View className="border border-gray-300 rounded-lg mb-4">
-                <Picker
-                  selectedValue={selectedProjectId}
-                  onValueChange={(itemValue) => setSelectedProjectId(itemValue)}
-                  style={{ height: 50, width: '100%' }} // Adjust styling as needed
-                >
-                  {projects.map((proj) => (
-                    <Picker.Item key={proj.id} label={proj.name} value={proj.id} />
-                  ))}
-                </Picker>
-              </View>
-            )}
+            </View>
+            {/* Removed Project Picker */}
 
             <Text className="font-bold text-lg mb-2">
               Material Type <Text className="text-red-500">*</Text>
@@ -324,9 +317,9 @@ const ShortageReportForm = () => {
             )}
 
             <TouchableOpacity
-              className={`bg-blue-600 p-4 rounded-lg ${isSubmitting ? "opacity-50" : ""}`}
+              className={`bg-blue-600 p-4 rounded-lg ${isSubmitting || !projectId ? "opacity-50" : ""}`}
               onPress={handleSubmit}
-              disabled={isSubmitting || loadingProjects || projects.length === 0}
+              disabled={isSubmitting || !projectId} // Disable if submitting or projectId is missing
             >
               {isSubmitting ? (
                 <ActivityIndicator color="white" />
