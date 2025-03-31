@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -8,17 +8,20 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert, // Added for notification permission feedback
+  Alert,
+  ScrollView,
+  Animated,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Lock, Mail } from "lucide-react-native";
-import { auth, db } from "../../config/firebase"; // Import Firebase auth and db
+import { Lock, Mail, Eye, EyeOff } from "lucide-react-native";
+import { auth, db } from "../../config/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import * as Notifications from "expo-notifications"; // Import Expo Notifications
-import Constants from "expo-constants"; // To check if it's a physical device
-import { doc, updateDoc } from "firebase/firestore"; // Import Firestore functions
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
+import { doc, updateDoc } from "firebase/firestore";
 
-// Configure notification handler (optional but recommended)
+// Configure notification handler
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -51,20 +54,18 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
       Alert.alert('Permission Denied', 'Failed to get push token for push notification!');
       return null;
     }
-    // Learn more about projectId: https://docs.expo.dev/push-notifications/push-notifications-setup/#configure-projectid
-    // EAS project ID is required for Expo Push Notifications.
     const projectId = Constants.expoConfig?.extra?.eas?.projectId;
     if (!projectId) {
-        Alert.alert('Configuration Error', 'Missing EAS project ID in app config. Cannot get push token.');
-        return null;
+      Alert.alert('Configuration Error', 'Missing EAS project ID in app config. Cannot get push token.');
+      return null;
     }
     try {
-        token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-        console.log("Expo Push Token:", token);
+      token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+      console.log("Expo Push Token:", token);
     } catch (e) {
-        console.error("Error getting Expo push token:", e);
-        Alert.alert('Error', 'Could not get push token.');
-        return null;
+      console.error("Error getting Expo push token:", e);
+      Alert.alert('Error', 'Could not get push token.');
+      return null;
     }
   } else {
     Alert.alert('Must use physical device for Push Notifications');
@@ -74,35 +75,31 @@ async function registerForPushNotificationsAsync(): Promise<string | null> {
   return token;
 }
 
-
 const LoginScreen = () => {
-  const [email, setEmail] = useState(""); // Changed username to email
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false); // Added loading state
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Redirect if already logged in (optional, better handled in _layout)
-  // useEffect(() => {
-  //   const unsubscribe = onAuthStateChanged(auth, (user) => {
-  //     if (user) {
-  //       // User is signed in, decide where to redirect based on role or default
-  //       // This logic might be better placed in a higher-level component like _layout.tsx
-  //       // For now, let's assume a default redirect or role check happens elsewhere
-  //       // router.replace('/engineer'); // Example redirect
-  //     }
-  //   });
-  //   return unsubscribe; // Cleanup subscription on unmount
-  // }, []);
+  // Fade-in animation setup
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
 
-
-  const handleLogin = async () => { // Made async
-    if (!email || !password) { // Changed username to email
+  const handleLogin = async () => {
+    if (!email || !password) {
       setError("Please enter both email and password");
       return;
     }
 
-    setError(""); // Clear previous errors
-    setLoading(true); // Start loading
+    setError("");
+    setLoading(true);
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -115,26 +112,25 @@ const LoginScreen = () => {
         if (token && user) {
           const userDocRef = doc(db, "users", user.uid);
           await updateDoc(userDocRef, {
-            expoPushToken: token, // Field name to store the token
-            updatedAt: new Date(), // Optional: track last update
+            expoPushToken: token,
+            updatedAt: new Date(),
           });
           console.log("Push token saved successfully for user:", user.uid);
         } else if (user) {
-            console.log("Could not get push token, skipping Firestore update for user:", user.uid);
+          console.log("Could not get push token, skipping Firestore update for user:", user.uid);
         }
       } catch (tokenError) {
         console.error("Error registering/saving push token:", tokenError);
-        // Decide if login should still proceed or show an error
-        // Alert.alert("Notification Setup Failed", "Could not set up push notifications, but login was successful.");
       }
       // --- End Push Notification Logic ---
-
-      // Navigation is handled by the listener in _layout.tsx
     } catch (err: any) {
       console.error("Login Error:", err);
-      // Provide more specific error messages based on Firebase error codes
       let errorMessage = "Login failed. Please check your credentials.";
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+      if (
+        err.code === 'auth/user-not-found' ||
+        err.code === 'auth/wrong-password' ||
+        err.code === 'auth/invalid-credential'
+      ) {
         errorMessage = "Invalid email or password.";
       } else if (err.code === 'auth/invalid-email') {
         errorMessage = "Please enter a valid email address.";
@@ -143,86 +139,100 @@ const LoginScreen = () => {
       }
       setError(errorMessage);
     } finally {
-      setLoading(false); // Stop loading
+      setLoading(false);
     }
   };
 
-
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-gray-100"
-    >
-      <View className="flex-1 justify-center p-6 bg-white">
-        <View className="items-center mb-8">
-          <Text className="text-2xl font-bold text-blue-800">
-            Construction Material Manager
-          </Text>
-          <Text className="text-gray-500 mt-2">
-            Login to access your dashboard
-          </Text>
-        </View>
-
-        {error ? (
-          <Text className="text-red-500 mb-4 text-center">{error}</Text>
-        ) : null}
-
-        <View className="mb-4">
-          <View className="flex-row items-center border border-gray-300 rounded-lg p-3 mb-4">
-            <Mail size={20} color="#4B5563" /> {/* Changed icon */}
-            <TextInput
-              className="flex-1 ml-2 text-base"
-              placeholder="Email" // Changed placeholder
-              value={email} // Changed state variable
-              onChangeText={setEmail} // Changed state setter
-              keyboardType="email-address" // Added keyboard type
-              autoCapitalize="none"
-            />
-          </View>
-
-          <View className="flex-row items-center border border-gray-300 rounded-lg p-3">
-            <Lock size={20} color="#4B5563" />
-            <TextInput
-              className="flex-1 ml-2 text-base"
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
-        </View>
-
-        {/* Role selection removed - Role should be determined after login, possibly from Firestore */}
-
-        <TouchableOpacity
-          className={`p-4 rounded-lg ${loading ? "bg-blue-400" : "bg-blue-600"}`} // Adjusted style for loading
-          onPress={handleLogin}
-          disabled={loading} // Disable button while loading
+    <SafeAreaView className="flex-1 bg-gray-100">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1"
+      >
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
         >
-          {loading ? (
-            <ActivityIndicator size="small" color="#ffffff" />
-          ) : (
-            <Text className="text-white text-center font-bold text-lg">
-              Login
-            </Text>
-          )}
-        </TouchableOpacity>
+          <Animated.View style={{ opacity: fadeAnim }} className="flex-1 justify-center p-6">
+            <View className="items-center mb-8">
+              {/* Logo */}
+              <Image
+                source={{ uri: "https://via.placeholder.com/100" }}
+                style={{ width: 100, height: 100, marginBottom: 16 }}
+              />
+              <Text className="text-2xl font-bold text-blue-800">
+                Construction Material Manager
+              </Text>
+              <Text className="text-gray-500 mt-2">
+                Login to access your dashboard
+              </Text>
+            </View>
 
-        {/* Removed demo credentials text */}
+            {error ? (
+              <Text className="text-red-500 mb-4 text-center">{error}</Text>
+            ) : null}
 
-        <TouchableOpacity
-          className="mt-6" // Add some margin top
-          onPress={() => {
-            console.log("Sign Up button pressed, attempting navigation to /signup"); // Add console log
-            router.push('/signup');
-          }}
-        >
-          <Text className="text-blue-600 text-center text-base">
-            Don't have an account? Sign Up
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+            <View className="mb-4">
+              <View className="flex-row items-center border border-gray-300 rounded-lg p-3 mb-4">
+                <Mail size={20} color="#4B5563" />
+                <TextInput
+                  className="flex-1 ml-2 text-base"
+                  placeholder="Email"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View className="flex-row items-center border border-gray-300 rounded-lg p-3">
+                <Lock size={20} color="#4B5563" />
+                <TextInput
+                  className="flex-1 ml-2 text-base"
+                  placeholder="Password"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  {showPassword ? (
+                    <EyeOff size={20} color="#4B5563" />
+                  ) : (
+                    <Eye size={20} color="#4B5563" />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              className={`p-4 rounded-lg ${loading ? "bg-blue-400" : "bg-blue-600"}`}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text className="text-white text-center font-bold text-lg">
+                  Login
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              className="mt-6"
+              onPress={() => {
+                console.log("Navigating to Sign Up");
+                router.push('/signup');
+              }}
+            >
+              <Text className="text-blue-600 text-center text-base">
+                Don't have an account? Sign Up
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
