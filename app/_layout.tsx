@@ -1,3 +1,5 @@
+// Ensure Firebase is initialized before anything else
+import './config/firebase'; 
 import {
   DefaultTheme,
   ThemeProvider,
@@ -140,28 +142,53 @@ export default function RootLayout() {
       // Logged out but in a protected route, redirect to login
       console.log("Redirecting logged-out user to login...");
       router.replace("/");
-    // @ts-ignore - TS incorrectly infers segments types, but this check is valid for root, index, and signup routes
-    } else if (user && (segments.length === 0 || segments[0] === 'index' || segments[0] === 'signup')) {
-      // Logged in but currently on a public route (login, signup, root index)
-      // Redirect based on role
-      const targetRoute = userRole === 'manager' ? '/manager' : '/engineer'; // Default to engineer if role is null/invalid
+    // @ts-ignore - TS incorrectly infers segments types, but this check is valid
+    } else if (user && (segments.length === 0 || ['index', 'signup'].includes(segments[0]))) {
+      // Logged in but currently on a public route (root, login, or signup)
+      // Redirect based on role, sending to role selection if role is missing
+      let targetRoute: string;
+      if (userRole === 'manager') {
+        targetRoute = '/manager';
+      } else if (userRole === 'engineer') {
+        targetRoute = '/engineer';
+      } else {
+        // Role is null or undefined, user needs to select it
+        targetRoute = '/select-role';
+      }
       console.log(`Redirecting logged-in user with role '${userRole}' from public route to ${targetRoute}...`);
       router.replace(targetRoute);
     } else if (user && inProtectedRoute) {
         // Logged in and in a protected route.
-        const currentRouteBase = segments[0]; // e.g., 'manager', 'engineer', 'settings'
-        const expectedDashboard = userRole === 'manager' ? 'manager' : 'engineer';
-        const sharedProtectedRoutes = ['settings', 'notifications', 'report-detail', 'report-form']; // Add any other shared routes
+        const currentRouteBase = segments[0]; // e.g., 'manager', 'engineer', 'settings', 'select-role'
+        const expectedDashboard = userRole === 'manager' ? 'manager' : (userRole === 'engineer' ? 'engineer' : null);
+        // Routes accessible regardless of role (once logged in)
+        const sharedProtectedRoutes = ['settings', 'notifications', 'report-detail', 'report-form', 'select-role'];
 
-        // Check if the user is trying to access the *other* role's main dashboard area
-        // while allowing access to shared routes.
-        if (!sharedProtectedRoutes.includes(currentRouteBase) && currentRouteBase !== expectedDashboard) {
-            // User is in a protected route that isn't shared AND doesn't match their expected dashboard
-            // Example: Manager ('manager') trying to access '/engineer'
-            console.warn(`Role/Route mismatch! User role '${userRole}' trying to access '/${currentRouteBase}'. Redirecting to /${expectedDashboard}...`);
-            router.replace(`/${expectedDashboard}`);
+        // If user needs to select role, ensure they stay on select-role screen
+        if (!userRole && currentRouteBase !== 'select-role') {
+            console.log(`User role is null, redirecting to /select-role from /${currentRouteBase}...`);
+            router.replace('/select-role');
+        }
+        // If user has a role, check if they are on the wrong dashboard or an unknown route
+        else if (userRole && !sharedProtectedRoutes.includes(currentRouteBase) && currentRouteBase !== expectedDashboard) {
+            // User has a role, is on a protected route not in the shared list, and it doesn't match their dashboard
+            if (expectedDashboard) { // Ensure expectedDashboard is not null before redirecting
+                 console.warn(`Role/Route mismatch! User role '${userRole}' trying to access '/${currentRouteBase}'. Redirecting to /${expectedDashboard}...`);
+                 // Use literal route strings based on the expectedDashboard value
+                 if (expectedDashboard === 'manager') {
+                   router.replace('/manager');
+                 } else if (expectedDashboard === 'engineer') {
+                   router.replace('/engineer');
+                 }
+                 // No else needed here because expectedDashboard is checked above
+            } else {
+                 // Fallback if role exists but isn't 'manager' or 'engineer' (shouldn't happen with current setup)
+                 // This case should ideally not be reached if roles are strictly 'manager' or 'engineer'
+                 console.error(`User role '${userRole}' is invalid or expectedDashboard is null unexpectedly. Redirecting to /select-role.`);
+                 router.replace('/select-role');
+            }
         } else {
-             // User is either on their correct dashboard OR on a shared protected route. No redirect needed.
+             // User is on their correct dashboard, a shared route, or the select-role screen (if needed). No redirect needed.
              console.log(`No redirect needed (logged in, role '${userRole}' is on allowed route '/${segments.join('/')}').`);
         }
     } else {
