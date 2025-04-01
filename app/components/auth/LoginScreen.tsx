@@ -19,7 +19,7 @@ import { auth, db, firebaseConfig, app } from "../../config/firebase";
 import { PhoneAuthProvider, signInWithPhoneNumber } from "firebase/auth";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
-import { doc, updateDoc, setDoc } from "firebase/firestore";
+import { doc, updateDoc, setDoc, getDoc } from "firebase/firestore";
 import { FirebaseRecaptchaVerifierModal } from "expo-firebase-recaptcha";
 
 // Configure notification handler
@@ -155,42 +155,73 @@ const LoginScreen = () => {
       const user = userCredential.user;
       console.log("Phone Login successful:", user.uid);
 
-      // Navigate to the role selection screen
+      // --- Check Firestore for existing role ---
+      const userDocRef = doc(db, "users", user.uid);
+      let navigateTo = "/select-role"; // Default to select role
+      let userDocExists = false;
+      let userData: any = { // Prepare base user data
+        updatedAt: new Date(),
+        phoneNumber: user.phoneNumber,
+      };
+
+      try {
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          userDocExists = true;
+          const data = userDocSnap.data();
+          userData = { ...userData, ...data }; // Merge existing data
+          if (data.role) {
+            console.log("User has role:", data.role, "Navigating to home.");
+            navigateTo = "/(tabs)/home"; // Navigate to home if role exists
+          } else {
+            console.log("User exists but has no role. Navigating to select role.");
+          }
+        } else {
+          console.log("User document does not exist. Navigating to select role.");
+          userData.createdAt = new Date(); // Add createdAt if new user
+        }
+      } catch (docError) {
+        console.error("Error fetching user document:", docError);
+        setError("Error checking user details. Please try again.");
+        setLoading(false);
+        return; // Stop execution if we can't check the doc
+      }
+
+      // --- Navigate based on role check ---
       router.replace({
-        pathname: "/select-role",
-        params: { userId: user.uid },
+        pathname: navigateTo as any, // Cast to any to satisfy router type
+        params: { userId: user.uid }, // Pass userId regardless
       });
 
-      // Register for push notifications and save the token in Firestore
+      // --- Register for push notifications and update/create Firestore doc ---
+      // This happens *after* navigation decision
       try {
         const token = await registerForPushNotificationsAsync();
-        if (token && user) {
-          const userDocRef = doc(db, "users", user.uid);
-          await updateDoc(userDocRef, {
-            expoPushToken: token,
-            updatedAt: new Date(),
-            phoneNumber: user.phoneNumber,
-          }).catch(async (updateError) => {
-            if (updateError.code === "not-found") {
-              console.log("User doc not found, creating...");
-              await setDoc(userDocRef, {
-                expoPushToken: token,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                phoneNumber: user.phoneNumber,
-              });
-              console.log("User doc created and push token saved.");
-            } else {
-              throw updateError;
-            }
-          });
-          console.log("Push token saved successfully for user:", user.uid);
-        } else if (user) {
-          console.log("Could not get push token, skipping Firestore update for user:", user.uid);
+        if (token) {
+          userData.expoPushToken = token; // Add or update token
+          console.log("Got push token:", token);
+        } else {
+          console.log("Could not get push token.");
+          // Decide if you want to remove the token if it couldn't be fetched again
+          // delete userData.expoPushToken;
         }
-      } catch (tokenError) {
-        console.error("Error registering/saving push token:", tokenError);
+
+        // Update or set the document
+        if (userDocExists) {
+          await updateDoc(userDocRef, userData);
+          console.log("User document updated successfully.");
+        } else {
+          await setDoc(userDocRef, userData);
+          console.log("User document created successfully.");
+        }
+
+      } catch (tokenOrDbError) {
+        // Log errors related to token registration or DB update, but don't block user
+        console.error("Error registering push token or updating/creating Firestore doc:", tokenOrDbError);
+        // Optionally inform the user non-critically
+        // Alert.alert("Notification Issue", "Could not set up push notifications.");
       }
+
     } catch (err: any) {
       console.error("OTP Verify Error:", err);
       let errorMessage = "Failed to verify OTP. Please check the code and try again.";
