@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView, Switch, Alert } from "react-native"; // Added Alert
 import { router } from "expo-router";
-import { getAuth, signOut } from "firebase/auth"; // Added Firebase auth imports
-import { app } from "../../config/firebase"; // Added Firebase app import
+import { useAuth } from "@clerk/clerk-expo"; // Added Clerk useAuth import
 import {
   ArrowLeft,
   Bell,
@@ -24,15 +23,20 @@ const SettingsScreen = () => {
   const [offlineMode, setOfflineMode] = useState(false);
   const [dataUsage, setDataUsage] = useState("wifi"); // "wifi" or "all"
 
-  const handleLogout = async () => { // Made async
-    const auth = getAuth(app);
+  const { signOut } = useAuth(); // Get signOut from Clerk
+
+  const handleLogout = async () => {
     try {
-      await signOut(auth);
-      // Successfully signed out, navigate to login/home
-      router.replace("/"); // Navigate to the root/login screen
+      await signOut();
+      // On successful Clerk sign out, the redirection should be handled
+      // automatically by the logic in _layout.tsx (router.replace("/") if needed,
+      // but Clerk's state change usually triggers the redirect)
+      console.log("Clerk sign out successful");
+      // Optionally, you can still force a redirect if needed:
+      // router.replace("/");
     } catch (error) {
-      console.error("Error signing out: ", error);
-      Alert.alert("Logout Error", "Could not log out. Please try again."); // Show error to user
+      console.error("Error signing out with Clerk: ", error);
+      Alert.alert("Logout Error", "Could not log out. Please try again.");
     }
   };
 

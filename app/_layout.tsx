@@ -42,10 +42,8 @@ type AuthStateHandlerProps = {
 };
 
 function AuthStateHandler({ loaded }: AuthStateHandlerProps) {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [isRoleLoading, setIsRoleLoading] = useState(false);
   const segments = useSegments();
 
   // Tempo Devtools Initialization (only on web)
@@ -77,48 +75,19 @@ function AuthStateHandler({ loaded }: AuthStateHandlerProps) {
     };
   }, []);
 
-  // Fetch User Role when user logs in
-  useEffect(() => {
-    const fetchRole = async () => {
-      if (user) {
-        setIsRoleLoading(true);
-        setUserRole(null);
-        console.log(`Fetching role for user: ${user.id}`);
-        try {
-          const userDocRef = doc(require("./config/firebase").db, "users", user.id);
-          const userDocSnap = await getDoc(userDocRef);
-          if (userDocSnap.exists()) {
-            const userData = userDocSnap.data();
-            console.log("User data fetched:", userData);
-            setUserRole(userData.role || null);
-          } else {
-            console.warn(`No user document found for UID: ${user.id}`);
-            setUserRole(null);
-          }
-        } catch (error) {
-          console.error("Error fetching user role:", error);
-          setUserRole(null);
-        } finally {
-          setIsRoleLoading(false);
-        }
-      } else {
-        setUserRole(null);
-        setIsRoleLoading(false);
-      }
-    };
-
-    fetchRole();
-  }, [user]);
-
   // Handle redirection based on auth state, role, and font loading
   useEffect(() => {
+    // Directly access role from Clerk metadata
+    const userRole = user?.publicMetadata?.role as string | undefined; // Get role from metadata
     const inProtectedRoute = isProtectedRoute(segments);
-    const readyToRedirect = loaded && isLoaded && (!isSignedIn || !isRoleLoading);
+    // Adjust readyToRedirect logic if needed, isRoleLoading is removed
+    const readyToRedirect = loaded && isLoaded;
 
-    console.log("Checking redirect:", { readyToRedirect, loaded, user: user?.id, isRoleLoading, userRole, segments, inProtectedRoute });
-
+    console.log("Checking redirect:", { readyToRedirect, loaded, isSignedIn, userId: user?.id, userRole, segments, inProtectedRoute });
+    
     if (!readyToRedirect) {
       console.log("Still loading dependencies for redirection...");
+      SplashScreen.hideAsync(); // Hide splash screen even if waiting for auth state
       return;
     }
 
@@ -127,11 +96,13 @@ function AuthStateHandler({ loaded }: AuthStateHandlerProps) {
     if (!isSignedIn && inProtectedRoute) {
       console.log("Redirecting logged-out user to login...");
       router.replace("/");
-} else if (isSignedIn && (!segments[0] || segments[0] === "signup")) {
+    } else if (isSignedIn && (!segments[0] || segments[0] === "signup")) {
+      // Use userRole from metadata here
       const targetRoute = userRole === "manager" ? "/manager" : "/engineer";
       console.log(`Redirecting logged-in user with role '${userRole}' from public route to ${targetRoute}...`);
       router.replace(targetRoute);
     } else if (isSignedIn && inProtectedRoute) {
+      // Use userRole from metadata here
       const currentRouteBase = segments[0];
       const expectedDashboard = userRole === "manager" ? "manager" : "engineer";
       const sharedProtectedRoutes = ["settings", "notifications", "report-detail", "report-form"];
@@ -143,22 +114,23 @@ function AuthStateHandler({ loaded }: AuthStateHandlerProps) {
         console.log(`No redirect needed (logged in, role '${userRole}' is on allowed route '/${segments.join("/")}' ).`);
       }
     } else {
-      console.log("No redirect needed (logged out on public route).");
+      console.log("No redirect needed (logged out on public route or already on correct route).");
     }
-  }, [loaded, user, userRole, isRoleLoading, segments]);
+    // Update dependencies: remove isRoleLoading, userRole state. Add user object directly.
+  }, [loaded, isLoaded, isSignedIn, user, segments]);
 
-  if (!loaded || !isLoaded || (isSignedIn && isRoleLoading)) {
-    return null;
+  // Adjust loading condition: remove isRoleLoading and isSignedIn checks if handled by redirect logic
+  if (!loaded || !isLoaded) {
+    // Show a loading indicator or splash screen while Clerk is loading
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></View>;
   }
 
+
+  // Consider simplifying this return structure if redirection handles everything
   return (
     <>
-      <SignedIn>
-        <Slot />
-      </SignedIn>
-      <SignedOut>
-        <Slot />
-      </SignedOut>
+      {/* Slot renders the current matched route */}
+      <Slot />
       <StatusBar style="auto" />
     </>
   );
