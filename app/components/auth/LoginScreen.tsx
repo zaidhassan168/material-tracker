@@ -16,67 +16,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Lock, Mail, Eye, EyeOff } from "lucide-react-native";
 import { useOAuth, useSignIn } from "@clerk/clerk-expo";
-import { auth, db } from "../../config/firebase";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import * as Notifications from "expo-notifications";
-import Constants from "expo-constants";
-import { doc, updateDoc } from "firebase/firestore";
+import * as WebBrowser from "expo-web-browser";
 
-// Configure notification handler
-Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: false,
-        shouldSetBadge: false,
-    }),
-});
-
-// Function to register for push notifications
-async function registerForPushNotificationsAsync(): Promise<string | null> {
-    let token;
-
-    if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-            name: 'default',
-            importance: Notifications.AndroidImportance.MAX,
-            vibrationPattern: [0, 250, 250, 250],
-            lightColor: '#FF231F7C',
-        });
-    }
-
-    if (Constants.isDevice) {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        if (existingStatus !== 'granted') {
-            const { status } = await Notifications.requestPermissionsAsync();
-            finalStatus = status;
-        }
-        if (finalStatus !== 'granted') {
-            Alert.alert('Permission Denied', 'Failed to get push token for push notification!');
-            return null;
-        }
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-        if (!projectId) {
-            Alert.alert('Configuration Error', 'Missing EAS project ID in app config. Cannot get push token.');
-            return null;
-        }
-        try {
-            token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-            console.log("Expo Push Token:", token);
-        } catch (e) {
-            console.error("Error getting Expo push token:", e);
-            Alert.alert('Error', 'Could not get push token.');
-            return null;
-        }
-    } else {
-        Alert.alert('Must use physical device for Push Notifications');
-        return null;
-    }
-
-    return token;
-}
+// Ensure WebBrowser can dismiss the auth session
+WebBrowser.maybeCompleteAuthSession();
 
 const LoginScreen = () => {
+    const { signIn, setActive, isLoaded } = useSignIn();
+    const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
+
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
@@ -93,7 +41,11 @@ const LoginScreen = () => {
         }).start();
     }, [fadeAnim]);
 
+    // Clerk Email/Password Sign In
     const handleLogin = async () => {
+        if (!isLoaded) {
+            return;
+        }
         if (!email || !password) {
             setError("Please enter both email and password");
             return;
@@ -103,62 +55,58 @@ const LoginScreen = () => {
         setLoading(true);
 
         try {
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            const user = userCredential.user;
-            console.log("Login successful:", user.uid);
+            const signInAttempt = await signIn.create({
+                identifier: email,
+                password,
+            });
 
-            // --- Register for Push Notifications and Save Token ---
-            try {
-                const token = await registerForPushNotificationsAsync();
-                if (token && user) {
-                    const userDocRef = doc(db, "users", user.uid);
-                    await updateDoc(userDocRef, {
-                        expoPushToken: token,
-                        updatedAt: new Date(),
-                    });
-                    console.log("Push token saved successfully for user:", user.uid);
-                } else if (user) {
-                    console.log("Could not get push token, skipping Firestore update for user:", user.uid);
-                }
-            } catch (tokenError) {
-                console.error("Error registering/saving push token:", tokenError);
+            if (signInAttempt.status === "complete") {
+                await setActive({ session: signInAttempt.createdSessionId });
+                console.log("Clerk Sign In Successful");
+                // Navigation is handled by _layout.tsx based on auth state change
+                // router.replace("/"); // Usually not needed
+            } else {
+                // Handle other statuses like MFA if needed
+                console.error("Clerk Sign In Status:", signInAttempt.status);
+                setError("Sign in failed. Please check your credentials or complete MFA if required.");
             }
-            // --- End Push Notification Logic ---
         } catch (err: any) {
-            console.error("Login Error:", err);
-            let errorMessage = "Login failed. Please check your credentials.";
-            if (
-                err.code === 'auth/user-not-found' ||
-                err.code === 'auth/wrong-password' ||
-                err.code === 'auth/invalid-credential'
-            ) {
-                errorMessage = "Invalid email or password.";
-            } else if (err.code === 'auth/invalid-email') {
-                errorMessage = "Please enter a valid email address.";
-            } else if (err.code === 'auth/too-many-requests') {
-                errorMessage = "Too many login attempts. Please try again later.";
-            }
-            setError(errorMessage);
+            console.error("Clerk Sign In Error:", JSON.stringify(err, null, 2));
+            const firstError = err.errors?.[0];
+            setError(firstError?.longMessage || firstError?.message || "An unknown error occurred during sign in.");
         } finally {
             setLoading(false);
         }
     };
 
-    const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
-
+    // Clerk Google OAuth Sign In
     const handleGoogleSignIn = async () => {
         try {
-            const { createdSessionId, signIn, signUp, setActive } = await startOAuthFlow();
+            // Ensure setActive is defined by checking isLoaded first
+            if (!isLoaded) {
+                console.warn("Clerk is not loaded yet for Google Sign In");
+                return; // Or show a message to the user
+            }
+            const { createdSessionId, signIn: googleSignIn, signUp, setActive: googleSetActive } = await startOAuthFlow();
+
             if (createdSessionId) {
-                if (setActive) {
-                    await setActive({ session: createdSessionId });
-                } else {
-                    console.error("setActive is undefined");
+                if (!googleSetActive) {
+                    console.error("setActive function is unexpectedly undefined after Google OAuth.");
+                    setError("Failed to complete Google Sign In. Please try again.");
+                    return;
                 }
+                await googleSetActive({ session: createdSessionId });
+                console.log("Clerk Google Sign In Successful");
+                // Navigation handled by _layout.tsx
+            } else {
+                // Handle other flows like sign up if necessary
+                console.log("Google OAuth did not create a session directly.", { googleSignIn, signUp });
+                // You might need to navigate user to complete profile depending on your Clerk settings
             }
         } catch (err) {
-            console.error("Google OAuth error", err);
-            Alert.alert("Authentication Error", "Failed to sign in with Google.");
+            console.error("Clerk Google OAuth error:", JSON.stringify(err, null, 2));
+            Alert.alert("Authentication Error", "Failed to sign in with Google. Please try again.");
+            setError("Failed to sign in with Google."); // Optionally set state error too
         }
     };
 
@@ -224,9 +172,9 @@ const LoginScreen = () => {
                         </View>
 
                         <TouchableOpacity
-                            className={`p-4 rounded-lg ${loading ? "bg-blue-400" : "bg-blue-600"}`}
+                            className={`p-4 rounded-lg ${loading || !isLoaded ? "bg-blue-400" : "bg-blue-600"}`}
                             onPress={handleLogin}
-                            disabled={loading}
+                            disabled={loading || !isLoaded}
                         >
                             {loading ? (
                                 <ActivityIndicator size="small" color="#ffffff" />
@@ -238,8 +186,9 @@ const LoginScreen = () => {
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            className="mt-6 bg-white border border-gray-300 p-4 rounded-lg flex-row justify-center items-center"
+                            className={`mt-6 bg-white border border-gray-300 p-4 rounded-lg flex-row justify-center items-center ${!isLoaded ? "opacity-50" : ""}`}
                             onPress={handleGoogleSignIn}
+                            disabled={!isLoaded}
                         >
                             <Image
                                 source={{ uri: "https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo_2013_Google.png" }}
@@ -250,17 +199,12 @@ const LoginScreen = () => {
                             </Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity
-                            className="mt-6"
-                            onPress={() => {
-                                console.log("Navigating to Sign Up");
-                                router.push('/signup');
-                            }}
-                        >
-                            <Text className="text-blue-600 text-center text-base">
-                                Don't have an account? Sign Up
-                            </Text>
-                        </TouchableOpacity>
+                        <View className="flex-row justify-center mt-6">
+                            <Text className="text-gray-600">Don't have an account? </Text>
+                            <TouchableOpacity onPress={() => router.push("/signup")}>
+                                <Text className="text-blue-600 font-bold">Sign Up</Text>
+                            </TouchableOpacity>
+                        </View>
                     </Animated.View>
                 </ScrollView>
             </KeyboardAvoidingView>
