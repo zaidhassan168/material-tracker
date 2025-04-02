@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Lock, Mail, Eye, EyeOff } from "lucide-react-native";
+import { useOAuth, useSignIn } from "@clerk/clerk-expo";
 import { auth, db } from "../../config/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import * as Notifications from "expo-notifications";
@@ -143,6 +144,20 @@ const LoginScreen = () => {
     }
   };
 
+  const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const { createdSessionId, signIn, signUp, setActive } = await startOAuthFlow();
+      if (createdSessionId) {
+        await setActive({ session: createdSessionId });
+      }
+    } catch (err) {
+      console.error("Google OAuth error", err);
+      Alert.alert("Authentication Error", "Failed to sign in with Google.");
+    }
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-gray-100">
       <KeyboardAvoidingView
@@ -216,6 +231,19 @@ const LoginScreen = () => {
                   Login
                 </Text>
               )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              className="mt-6 bg-white border border-gray-300 p-4 rounded-lg flex-row justify-center items-center"
+              onPress={handleGoogleSignIn}
+            >
+              <Image
+                source={{ uri: "https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo_2013_Google.png" }}
+                style={{ width: 20, height: 20, marginRight: 8 }}
+              />
+              <Text className="text-gray-700 text-base font-medium">
+                Sign in with Google
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
