@@ -84,7 +84,7 @@ function AuthStateHandler({ loaded }: AuthStateHandlerProps) {
     const readyToRedirect = loaded && isLoaded;
 
     console.log("Checking redirect:", { readyToRedirect, loaded, isSignedIn, userId: user?.id, userRole, segments, inProtectedRoute });
-    
+
     if (!readyToRedirect) {
       console.log("Still loading dependencies for redirection...");
       SplashScreen.hideAsync(); // Hide splash screen even if waiting for auth state
@@ -97,21 +97,35 @@ function AuthStateHandler({ loaded }: AuthStateHandlerProps) {
       console.log("Redirecting logged-out user to login...");
       router.replace("/");
     } else if (isSignedIn && (!segments[0] || segments[0] === "signup")) {
-      // Use userRole from metadata here
-      const targetRoute = userRole === "manager" ? "/manager" : "/engineer";
-      console.log(`Redirecting logged-in user with role '${userRole}' from public route to ${targetRoute}...`);
-      router.replace(targetRoute);
-    } else if (isSignedIn && inProtectedRoute) {
-      // Use userRole from metadata here
-      const currentRouteBase = segments[0];
-      const expectedDashboard = userRole === "manager" ? "manager" : "engineer";
-      const sharedProtectedRoutes = ["settings", "notifications", "report-detail", "report-form"];
-
-      if (!sharedProtectedRoutes.includes(currentRouteBase) && currentRouteBase !== expectedDashboard) {
-        console.warn(`Role/Route mismatch! User role '${userRole}' trying to access '/${currentRouteBase}'. Redirecting to /${expectedDashboard}...`);
-        router.replace(`/${expectedDashboard}`);
+      // Check for role *before* redirecting from public route
+      if (!userRole) {
+        console.log("Redirecting logged-in user with MISSING role to /missing-role...");
+        router.replace("/missing-role");
       } else {
-        console.log(`No redirect needed (logged in, role '${userRole}' is on allowed route '/${segments.join("/")}' ).`);
+        const targetRoute = userRole === "manager" ? "/manager" : "/engineer";
+        console.log(`Redirecting logged-in user with role '${userRole}' from public route to ${targetRoute}...`);
+        router.replace(targetRoute);
+      }
+    } else if (isSignedIn && inProtectedRoute) {
+      // Also check for role when already on a protected route
+      if (!userRole && segments[0] !== 'missing-role') { // Avoid redirect loop if already on missing-role
+        console.log("Redirecting logged-in user with MISSING role from protected route to /missing-role...");
+        router.replace("/missing-role");
+      } else if (userRole) {
+        const currentRouteBase = segments[0];
+        const expectedDashboard = userRole === "manager" ? "manager" : "engineer";
+        const sharedProtectedRoutes = ["settings", "notifications", "report-detail", "report-form"];
+
+        // Only perform role mismatch check if the user has a role and isn't on the missing-role screen
+        if (!sharedProtectedRoutes.includes(currentRouteBase) && currentRouteBase !== expectedDashboard && currentRouteBase !== 'missing-role') {
+          console.warn(`Role/Route mismatch! User role '${userRole}' trying to access '/${currentRouteBase}'. Redirecting to /${expectedDashboard}...`);
+          router.replace(`/${expectedDashboard}`);
+        } else {
+          console.log(`No redirect needed (logged in, role '${userRole || 'none'}' is on allowed route '/${segments.join("/")}' ).`);
+        }
+      } else {
+        // User is logged in, has no role, but is already on the missing-role screen or another allowed screen (if any)
+        console.log(`No redirect needed (logged in, no role, on route '/${segments.join("/")}').`);
       }
     } else {
       console.log("No redirect needed (logged out on public route or already on correct route).");
