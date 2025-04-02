@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,15 +11,22 @@ import {
   Alert,
   ScrollView,
   Animated,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
-import { Lock, Mail, Eye, EyeOff } from "lucide-react-native";
-import { auth, db } from "../../config/firebase";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import * as Notifications from "expo-notifications";
-import Constants from "expo-constants";
-import { doc, updateDoc } from "firebase/firestore";
+  StyleSheet,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { Lock, Mail, Eye, EyeOff } from 'lucide-react-native';
+import { auth, db } from '../../config/firebase';
+import {
+  signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithCredential,
+} from 'firebase/auth';
+import * as AuthSession from 'expo-auth-session';
+import { ResponseType, makeRedirectUri } from 'expo-auth-session';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -82,15 +89,55 @@ const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Fade-in animation setup
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
+    const redirectUri = makeRedirectUri();
+console.log('Redirect URI:', redirectUri);
+
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 800,
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
+
+  const handleSuccessfulLogin = async (user: any) => {
+    console.log('Login successful, handling user:', user.uid);
+
+    try {
+      const token = await registerForPushNotificationsAsync();
+      const userDocRef = doc(db, 'users', user.uid);
+      await setDoc(userDocRef, {
+        expoPushToken: token || null,
+        updatedAt: new Date(),
+        email: user.email,
+        displayName: user.displayName || '',
+      }, { merge: true });
+    } catch (tokenError) {
+      console.error('Error registering/saving push token or user info:', tokenError);
+    }
+
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      // Role check and navigation are now handled by _layout.tsx based on auth state change.
+      // We just log the success here. The _layout component will fetch the role
+      // and navigate accordingly once the auth state is confirmed.
+      if (userDocSnap.exists() && userDocSnap.data()?.role) {
+        const role = userDocSnap.data().role;
+        console.log(`Login successful for user ${user.uid} with role: ${role}. _layout will handle navigation.`);
+      } else {
+        console.log(`Login successful for user ${user.uid}. New user or no role found. _layout will navigate to role selection.`);
+      }
+    } catch (roleError) {
+      // Log error, but don't set component error state here as _layout might handle fallback
+      console.error('Error checking user role during login:', roleError);
+      // setError('Could not verify user role. Please try again.'); // Let _layout handle potential errors/redirects
+    }
+    // No navigation here - _layout.tsx handles it based on auth state change
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -103,26 +150,7 @@ const LoginScreen = () => {
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      console.log("Login successful:", user.uid);
-
-      // --- Register for Push Notifications and Save Token ---
-      try {
-        const token = await registerForPushNotificationsAsync();
-        if (token && user) {
-          const userDocRef = doc(db, "users", user.uid);
-          await updateDoc(userDocRef, {
-            expoPushToken: token,
-            updatedAt: new Date(),
-          });
-          console.log("Push token saved successfully for user:", user.uid);
-        } else if (user) {
-          console.log("Could not get push token, skipping Firestore update for user:", user.uid);
-        }
-      } catch (tokenError) {
-        console.error("Error registering/saving push token:", tokenError);
-      }
-      // --- End Push Notification Logic ---
+      await handleSuccessfulLogin(userCredential.user);
     } catch (err: any) {
       console.error("Login Error:", err);
       let errorMessage = "Login failed. Please check your credentials.";
@@ -143,6 +171,48 @@ const LoginScreen = () => {
     }
   };
 
+  const discovery = {
+    authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenEndpoint: 'https://oauth2.googleapis.com/token',
+  };
+
+  const [request, response, promptAsync] = AuthSession.useAuthRequest(
+    {
+      clientId: '98325339290-8n5b0b62g0n3n82g9r1qquifpb8ldn5a.apps.googleusercontent.com',
+      responseType: ResponseType.IdToken,
+      scopes: ['openid', 'profile', 'email'],
+      redirectUri: makeRedirectUri(),
+      usePKCE: false, // 👈 
+      extraParams: {
+        nonce: 'mynonce', // ✅ this is the correct way
+      }
+    },
+    discovery
+  );
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      if (id_token) {
+        const googleCredential = GoogleAuthProvider.credential(id_token);
+        signInWithCredential(auth, googleCredential)
+          .then((userCredential) => {
+            // Login successful. The onAuthStateChanged listener in _layout.tsx
+            // will detect the new user state and handle role fetching and navigation.
+            // No further action needed here regarding navigation or immediate user data updates.
+            console.log('Firebase Sign-In with Google credential successful. _layout will handle next steps.');
+            // handleSuccessfulLogin(userCredential.user); // Removed this call
+          })
+          .catch((error) => {
+            console.error('Error signing in with Google credential:', error);
+            setError('Google sign-in failed. Please try again.');
+          });
+      } else {
+        setError('No ID token returned by Google.');
+      }
+    }
+  }, [response]);
+
   return (
     <SafeAreaView className="flex-1 bg-gray-100">
       <KeyboardAvoidingView
@@ -155,7 +225,6 @@ const LoginScreen = () => {
         >
           <Animated.View style={{ opacity: fadeAnim }} className="flex-1 justify-center p-6">
             <View className="items-center mb-8">
-              {/* Logo */}
               <Image
                 source={{ uri: "https://via.placeholder.com/100" }}
                 style={{ width: 100, height: 100, marginBottom: 16 }}
@@ -205,7 +274,7 @@ const LoginScreen = () => {
             </View>
 
             <TouchableOpacity
-              className={`p-4 rounded-lg ${loading ? "bg-blue-400" : "bg-blue-600"}`}
+              className={`p-4 rounded-lg ${loading ? 'bg-blue-400' : 'bg-blue-600'}`}
               onPress={handleLogin}
               disabled={loading}
             >
@@ -216,6 +285,19 @@ const LoginScreen = () => {
                   Login
                 </Text>
               )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              className="bg-red-600 p-4 rounded-lg mt-4"
+              onPress={() => {
+                setError('');
+                promptAsync();
+              }}
+              disabled={!request}
+            >
+              <Text className="text-white text-center font-bold text-lg">
+                Sign in with Google
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
