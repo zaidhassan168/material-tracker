@@ -80,9 +80,15 @@ const EngineerDashboard = () => {
     setRefreshing(true);
     fetchProjects(true);
   }, [fetchProjects]);
-
-  const navigateToReportForm = (projectId: string) => {
-    router.push({ pathname: "/report-form", params: { projectId } });
+  const navigateToReportForm = (project: Project) => {
+    router.push({
+      pathname: "/report-form",
+      params: {
+        projectId: project.id,
+        projectName: project.name,
+        projectLocation: project.location,
+      },
+    });
   };
 
   const navigateToSettings = () => {
@@ -106,13 +112,13 @@ const EngineerDashboard = () => {
           <View className="flex-row">
             <TouchableOpacity
               onPress={navigateToNotifications}
-              className="mr-4 p-2 rounded-full bg-[#f8d12d]"
+              className="mr-4 p-2 rounded-full"
             >
               <Bell color="#3a2100" size={22} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={navigateToSettings}
-              className="p-2 rounded-full bg-[#f8d12d]"
+              className="p-2 rounded-full"
             >
               <Settings color="#3a2100" size={22} />
             </TouchableOpacity>
@@ -153,7 +159,7 @@ const EngineerDashboard = () => {
               key={project.id}
               className="rounded-lg p-5 mb-4 shadow-sm flex-row justify-between items-center border border-gray-200"
               style={{ backgroundColor: getRandomColor(index) }}
-              onPress={() => navigateToReportForm(project.id)}
+              onPress={() => navigateToReportForm(project)}
               activeOpacity={0.7}
             >
               <View className="flex-1 mr-4">
