@@ -46,7 +46,7 @@
       ]
     ],
     "notification": {
-      "icon": "./assets/images/without.png",
+      "icon": "./assets/images/small.png",
       "color": "#ffffff",
       "vibrate": true
     },
