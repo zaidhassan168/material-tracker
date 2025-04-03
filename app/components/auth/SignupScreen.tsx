@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
-// Replace Firebase with Clerk imports
+import {
+    View,
+    Text,
+    TextInput,
+    ActivityIndicator,
+    TouchableOpacity,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    Image
+} from 'react-native';
+import { Mail, Lock } from 'lucide-react-native';
 import { useSignUp } from '@clerk/clerk-expo';
-// Remove unused Firebase imports
-// import { createUserWithEmailAndPassword } from 'firebase/auth';
-// import { doc, setDoc } from 'firebase/firestore';
-// import { auth, db } from '../../config/firebase';
-// import { registerForPushNotificationsAsync } from '../../config/notifications';
 import { router } from 'expo-router';
 
 const SignupScreen = () => {
@@ -16,22 +20,18 @@ const SignupScreen = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [role, setRole] = useState('engineer'); // Default role
     const [loading, setLoading] = useState(false);
     const [pendingVerification, setPendingVerification] = useState(false);
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
 
-    // Start the sign up process
     const handleSignup = async () => {
-        if (!isLoaded) {
-            return;
-        }
+        if (!isLoaded) return;
         if (password !== confirmPassword) {
             setError("Passwords do not match.");
             return;
         }
-        if (!email || !password || !role) {
+        if (!email || !password) {
             setError("Please fill all fields.");
             return;
         }
@@ -43,13 +43,9 @@ const SignupScreen = () => {
             await signUp.create({
                 emailAddress: email,
                 password,
-                unsafeMetadata: { role }, // Store role in unsafeMetadata during signup
             });
 
-            // Send email verification code
             await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-
-            // Change UI state to verification stage
             setPendingVerification(true);
         } catch (err: any) {
             console.error("Clerk Signup Error:", JSON.stringify(err, null, 2));
@@ -60,27 +56,19 @@ const SignupScreen = () => {
         }
     };
 
-    // Verify email address code
     const onPressVerify = async () => {
-        if (!isLoaded) {
-            return;
-        }
+        if (!isLoaded) return;
 
         setError('');
         setLoading(true);
 
         try {
-            const completeSignUp = await signUp.attemptEmailAddressVerification({
-                code,
-            });
+            const completeSignUp = await signUp.attemptEmailAddressVerification({ code });
 
             if (completeSignUp.status === 'complete') {
                 await setActive({ session: completeSignUp.createdSessionId });
-                Alert.alert("Success", "Account created and verified successfully!");
-                router.replace('/'); // Redirect to home/dashboard (handled by _layout)
+                router.replace('/');
             } else {
-                // Handle other statuses if needed
-                console.error("Clerk Verification Status:", completeSignUp.status);
                 setError("Verification failed. Please check the code and try again.");
             }
         } catch (err: any) {
@@ -93,98 +81,102 @@ const SignupScreen = () => {
     };
 
     return (
-        <View className="flex-1 justify-center items-center p-6 bg-gray-100">
-            <Text className="text-2xl font-bold mb-6 text-gray-800">
-                {pendingVerification ? "Verify Your Email" : "Create Account"}
-            </Text>
+        <KeyboardAvoidingView
+            className="flex-1 bg-[hsl(60,4.8%,95.9%)]"
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+            <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+                <View className="flex-1 justify-center items-center px-6 py-10">
+                    <Image source={require("../../../assets/images/without.png")} style={{ width: 100, height: 100, marginBottom: 16 }} />
+                    <Text className="text-2xl font-bold text-[hsl(26,83.3%,14.1%)] mb-2">Construction Material Manager</Text>
+                    <Text className="text-lg text-[hsl(25,5.3%,44.7%)] mb-6">
+                        {pendingVerification ? "Verify Your Email" : "Create Account"}
+                    </Text>
 
-            {error ? (
-                <Text className="text-red-500 mb-4 text-center">{error}</Text>
-            ) : null}
+                    {error ? <Text className="text-red-500 mb-4 text-center">{error}</Text> : null}
 
-            {!pendingVerification && (
-                <>
-                    {/* Email Input */}
-                    <TextInput
-                        className="w-full h-12 border border-gray-300 rounded-lg px-4 mb-4 bg-white text-base"
-                        placeholder="Email"
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                    />
-                    {/* Password Input */}
-                    <TextInput
-                        className="w-full h-12 border border-gray-300 rounded-lg px-4 mb-4 bg-white text-base"
-                        placeholder="Password"
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry
-                    />
-                    {/* Confirm Password Input */}
-                    <TextInput
-                        className="w-full h-12 border border-gray-300 rounded-lg px-4 mb-4 bg-white text-base"
-                        placeholder="Confirm Password"
-                        value={confirmPassword}
-                        onChangeText={setConfirmPassword}
-                        secureTextEntry
-                    />
-                    {/* Role Picker */}
-                    <View className="w-full h-12 border border-gray-300 rounded-lg mb-6 bg-white justify-center">
-                        <Picker
-                            selectedValue={role}
-                            onValueChange={(itemValue: string) => setRole(itemValue)}
-                            style={{ height: '100%', width: '100%' }}
-                        >
-                            <Picker.Item label="Engineer" value="engineer" style={{ fontSize: 16 }} />
-                            <Picker.Item label="Manager" value="manager" style={{ fontSize: 16 }} />
-                        </Picker>
-                    </View>
+                    {!pendingVerification && (
+                        <>
+                            <View className="w-full flex-row items-center border border-gray-300 rounded-xl px-4 mb-4 bg-white">
+                                <Mail size={20} color="#4B5563" />
+                                <TextInput
+                                    className="flex-1 ml-2 h-12 text-base"
+                                    placeholder="Email"
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    keyboardType="email-address"
+                                    autoCapitalize="none"
+                                />
+                            </View>
+                            <View className="w-full flex-row items-center border border-gray-300 rounded-xl px-4 mb-4 bg-white">
+                                <Lock size={20} color="#4B5563" />
+                                <TextInput
+                                    className="flex-1 ml-2 h-12 text-base"
+                                    placeholder="Password"
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    secureTextEntry
+                                />
+                            </View>
+                            <View className="w-full flex-row items-center border border-gray-300 rounded-xl px-4 mb-6 bg-white">
+                                <Lock size={20} color="#4B5563" />
+                                <TextInput
+                                    className="flex-1 ml-2 h-12 text-base"
+                                    placeholder="Confirm Password"
+                                    value={confirmPassword}
+                                    onChangeText={setConfirmPassword}
+                                    secureTextEntry
+                                />
+                            </View>
+                            <TouchableOpacity
+                                className={`w-full p-4 rounded-xl ${loading || !isLoaded ? "bg-[hsl(47.9,95.8%,73%)]" : "bg-[hsl(47.9,95.8%,53.1%)]"}`}
+                                onPress={handleSignup}
+                                disabled={loading || !isLoaded}
+                            >
+                                {loading ? (
+                                    <ActivityIndicator size="small" color="#ffffff" />
+                                ) : (
+                                    <Text className="text-[hsl(26,83.3%,14.1%)] text-center font-semibold text-lg">
+                                        Sign Up
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
+                        </>
+                    )}
 
-                    {/* Sign Up Button */}
-                    <TouchableOpacity
-                        className={`w-full p-4 rounded-lg ${loading || !isLoaded ? "bg-blue-400" : "bg-blue-600"}`}
-                        onPress={handleSignup}
-                        disabled={loading || !isLoaded}
-                    >
-                        {loading ? (
-                            <ActivityIndicator size="small" color="#ffffff" />
-                        ) : (
-                            <Text className="text-white text-center font-bold text-lg">Sign Up</Text>
-                        )}
+                    {pendingVerification && (
+                        <>
+                            <TextInput
+                                className="w-full h-12 border border-gray-300 rounded-xl px-4 mb-4 bg-white text-base"
+                                value={code}
+                                placeholder="Enter Verification Code"
+                                onChangeText={setCode}
+                                keyboardType="number-pad"
+                            />
+                            <TouchableOpacity
+                                className={`w-full p-4 rounded-xl ${loading || !isLoaded ? "bg-[hsl(47.9,95.8%,73%)]" : "bg-[hsl(47.9,95.8%,53.1%)]"}`}
+                                onPress={onPressVerify}
+                                disabled={loading || !isLoaded}
+                            >
+                                {loading ? (
+                                    <ActivityIndicator size="small" color="#ffffff" />
+                                ) : (
+                                    <Text className="text-[hsl(26,83.3%,14.1%)] text-center font-semibold text-lg">
+                                        Verify Email
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
+                        </>
+                    )}
+
+                    <TouchableOpacity className="mt-6" onPress={() => router.back()}>
+                        <Text className="text-[hsl(47.9,95.8%,53.1%)] text-base font-medium">
+                            {pendingVerification ? "Back to Sign Up" : "Already have an account? Login"}
+                        </Text>
                     </TouchableOpacity>
-                </>
-            )}
-
-            {pendingVerification && (
-                <>
-                    <TextInput
-                        className="w-full h-12 border border-gray-300 rounded-lg px-4 mb-4 bg-white text-base"
-                        value={code}
-                        placeholder="Enter Verification Code"
-                        onChangeText={setCode}
-                        keyboardType="number-pad"
-                    />
-                    <TouchableOpacity
-                        className={`w-full p-4 rounded-lg ${loading || !isLoaded ? "bg-green-400" : "bg-green-600"}`}
-                        onPress={onPressVerify}
-                        disabled={loading || !isLoaded}
-                    >
-                        {loading ? (
-                            <ActivityIndicator size="small" color="#ffffff" />
-                        ) : (
-                            <Text className="text-white text-center font-bold text-lg">Verify Email</Text>
-                        )}
-                    </TouchableOpacity>
-                </>
-            )}
-
-            <TouchableOpacity className="mt-6" onPress={() => router.back()}>
-                <Text className="text-blue-600 text-base">
-                    {pendingVerification ? "Back to Sign Up" : "Already have an account? Login"}
-                </Text>
-            </TouchableOpacity>
-        </View>
+                </View>
+            </ScrollView>
+        </KeyboardAvoidingView>
     );
 };
 

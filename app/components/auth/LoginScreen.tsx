@@ -18,7 +18,6 @@ import { Lock, Mail, Eye, EyeOff } from "lucide-react-native";
 import { useOAuth, useSignIn } from "@clerk/clerk-expo";
 import * as WebBrowser from "expo-web-browser";
 
-// Ensure WebBrowser can dismiss the auth session
 WebBrowser.maybeCompleteAuthSession();
 
 const LoginScreen = () => {
@@ -31,7 +30,6 @@ const LoginScreen = () => {
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
-    // Fade-in animation setup
     const fadeAnim = useRef(new Animated.Value(0)).current;
     useEffect(() => {
         Animated.timing(fadeAnim, {
@@ -41,106 +39,72 @@ const LoginScreen = () => {
         }).start();
     }, [fadeAnim]);
 
-    // Clerk Email/Password Sign In
     const handleLogin = async () => {
-        if (!isLoaded) {
-            return;
-        }
+        if (!isLoaded) return;
         if (!email || !password) {
             setError("Please enter both email and password");
             return;
         }
-
         setError("");
         setLoading(true);
-
         try {
-            const signInAttempt = await signIn.create({
-                identifier: email,
-                password,
-            });
-
+            const signInAttempt = await signIn.create({ identifier: email, password });
             if (signInAttempt.status === "complete") {
                 await setActive({ session: signInAttempt.createdSessionId });
                 console.log("Clerk Sign In Successful");
-                // Navigation is handled by _layout.tsx based on auth state change
-                // router.replace("/"); // Usually not needed
             } else {
-                // Handle other statuses like MFA if needed
-                console.error("Clerk Sign In Status:", signInAttempt.status);
-                setError("Sign in failed. Please check your credentials or complete MFA if required.");
+                setError("Sign in failed. Please check your credentials.");
             }
         } catch (err: any) {
             console.error("Clerk Sign In Error:", JSON.stringify(err, null, 2));
             const firstError = err.errors?.[0];
-            setError(firstError?.longMessage || firstError?.message || "An unknown error occurred during sign in.");
+            setError(firstError?.longMessage || "An error occurred during sign in.");
         } finally {
             setLoading(false);
         }
     };
 
-    // Clerk Google OAuth Sign In
     const handleGoogleSignIn = async () => {
         try {
-            // Ensure setActive is defined by checking isLoaded first
-            if (!isLoaded) {
-                console.warn("Clerk is not loaded yet for Google Sign In");
-                return; // Or show a message to the user
-            }
-            const { createdSessionId, signIn: googleSignIn, signUp, setActive: googleSetActive } = await startOAuthFlow();
-
+            if (!isLoaded) return;
+            const { createdSessionId, setActive: googleSetActive } = await startOAuthFlow();
             if (createdSessionId) {
-                if (!googleSetActive) {
-                    console.error("setActive function is unexpectedly undefined after Google OAuth.");
-                    setError("Failed to complete Google Sign In. Please try again.");
-                    return;
+                if (googleSetActive) {
+                    await googleSetActive({ session: createdSessionId });
+                } else {
+                    console.error("googleSetActive is undefined.");
                 }
-                await googleSetActive({ session: createdSessionId });
                 console.log("Clerk Google Sign In Successful");
-                // Navigation handled by _layout.tsx
             } else {
-                // Handle other flows like sign up if necessary
-                console.log("Google OAuth did not create a session directly.", { googleSignIn, signUp });
-                // You might need to navigate user to complete profile depending on your Clerk settings
+                console.log("Google OAuth did not create a session directly.");
             }
         } catch (err) {
             console.error("Clerk Google OAuth error:", JSON.stringify(err, null, 2));
             Alert.alert("Authentication Error", "Failed to sign in with Google. Please try again.");
-            setError("Failed to sign in with Google."); // Optionally set state error too
+            setError("Failed to sign in with Google.");
         }
     };
 
     return (
-        <SafeAreaView className="flex-1 bg-gray-100">
-            <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                className="flex-1"
-            >
-                <ScrollView
-                    contentContainerStyle={{ flexGrow: 1 }}
-                    keyboardShouldPersistTaps="handled"
-                >
-                    <Animated.View style={{ opacity: fadeAnim }} className="flex-1 justify-center p-6">
-                        <View className="items-center mb-8">
-                            {/* Logo */}
+        <SafeAreaView className="flex-1 bg-[hsl(60,4.8%,95.9%)]">
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
+                <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+                    <Animated.View style={{ opacity: fadeAnim }} className="flex-1 justify-center px-6 py-8">
+                        <View className="items-center mb-10">
                             <Image
-                                source={{ uri: "https://via.placeholder.com/100" }}
-                                style={{ width: 100, height: 100, marginBottom: 16 }}
+                                source={require("../../../assets/images/without.png")}
+                                style={{ width: 100, height: 100 }}
                             />
-                            <Text className="text-2xl font-bold text-blue-800">
+                            <Text className="text-[hsl(26,83.3%,14.1%)] text-2xl font-bold mt-4">
                                 Construction Material Manager
                             </Text>
-                            <Text className="text-gray-500 mt-2">
-                                Login to access your dashboard
-                            </Text>
+                            <Text className="text-[hsl(25,5.3%,44.7%)] mt-1">Login to access your dashboard</Text>
                         </View>
 
-                        {error ? (
-                            <Text className="text-red-500 mb-4 text-center">{error}</Text>
-                        ) : null}
+                        {error ? <Text className="text-red-500 text-center mb-4">{error}</Text> : null}
 
-                        <View className="mb-4">
-                            <View className="flex-row items-center border border-gray-300 rounded-lg p-3 mb-4">
+                        <View className="space-y-4">
+                            <View className="flex-row items-center border border-gray-300 rounded-xl px-3 py-2 bg-white mb-4">
                                 <Mail size={20} color="#4B5563" />
                                 <TextInput
                                     className="flex-1 ml-2 text-base"
@@ -152,7 +116,7 @@ const LoginScreen = () => {
                                 />
                             </View>
 
-                            <View className="flex-row items-center border border-gray-300 rounded-lg p-3">
+                            <View className="flex-row items-center border border-gray-300 rounded-xl px-3 py-2 bg-white">
                                 <Lock size={20} color="#4B5563" />
                                 <TextInput
                                     className="flex-1 ml-2 text-base"
@@ -162,47 +126,39 @@ const LoginScreen = () => {
                                     secureTextEntry={!showPassword}
                                 />
                                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                                    {showPassword ? (
-                                        <EyeOff size={20} color="#4B5563" />
-                                    ) : (
-                                        <Eye size={20} color="#4B5563" />
-                                    )}
+                                    {showPassword ? <EyeOff size={20} color="#4B5563" /> : <Eye size={20} color="#4B5563" />}
                                 </TouchableOpacity>
                             </View>
                         </View>
 
                         <TouchableOpacity
-                            className={`p-4 rounded-lg ${loading || !isLoaded ? "bg-blue-400" : "bg-blue-600"}`}
+                            className={`mt-6 p-4 rounded-xl ${loading || !isLoaded ? "bg-[hsl(47.9,95.8%,73%)]" : "bg-[hsl(47.9,95.8%,53.1%)]"}`}
                             onPress={handleLogin}
                             disabled={loading || !isLoaded}
                         >
                             {loading ? (
                                 <ActivityIndicator size="small" color="#ffffff" />
                             ) : (
-                                <Text className="text-white text-center font-bold text-lg">
-                                    Login
-                                </Text>
+                                <Text className="text-[hsl(26,83.3%,14.1%)] text-center font-semibold text-lg">Login</Text>
                             )}
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            className={`mt-6 bg-white border border-gray-300 p-4 rounded-lg flex-row justify-center items-center ${!isLoaded ? "opacity-50" : ""}`}
+                            className="mt-4 bg-white border border-gray-300 p-4 rounded-xl flex-row items-center justify-center space-x-3"
                             onPress={handleGoogleSignIn}
                             disabled={!isLoaded}
                         >
                             <Image
-                                source={{ uri: "https://upload.wikimedia.org/wikipedia/commons/4/4a/Logo_2013_Google.png" }}
-                                style={{ width: 20, height: 20, marginRight: 8 }}
+                                source={{ uri: "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" }}
+                                style={{ width: 18, height: 18 }}
                             />
-                            <Text className="text-gray-700 text-base font-medium">
-                                Sign in with Google
-                            </Text>
+                            <Text className="text-[hsl(25,5.3%,44.7%)] font-medium">Sign in with Google</Text>
                         </TouchableOpacity>
 
                         <View className="flex-row justify-center mt-6">
-                            <Text className="text-gray-600">Don't have an account? </Text>
+                            <Text className="text-[hsl(25,5.3%,44.7%)]">Don't have an account? </Text>
                             <TouchableOpacity onPress={() => router.push("/signup")}>
-                                <Text className="text-blue-600 font-bold">Sign Up</Text>
+                                <Text className="text-[hsl(47.9,95.8%,53.1%)] font-bold">Sign Up</Text>
                             </TouchableOpacity>
                         </View>
                     </Animated.View>
