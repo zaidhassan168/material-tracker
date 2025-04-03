@@ -12,13 +12,26 @@ import { PlusCircle, Settings, Bell } from "lucide-react-native";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../config/firebase";
 import OfflineBanner from "../common/OfflineBanner";
-import { getCachedProjects, storeProjects } from "../../utils/cache"; // adjust path
+import { getCachedProjects, storeProjects } from "../../utils/cache";
 
 interface Project {
   id: string;
   name: string;
   location: string;
 }
+
+// Light pastel background colors
+const backgroundColors = [
+  "#fdf6e3",
+  "#fff9ec",
+  "#f3f9f1",
+  "#f9f1f6",
+  "#f5f5f1",
+  "#fef5e7",
+];
+
+const getRandomColor = (index: number) =>
+  backgroundColors[index % backgroundColors.length];
 
 const EngineerDashboard = () => {
   const [isOnline, setIsOnline] = useState(true);
@@ -41,7 +54,6 @@ const EngineerDashboard = () => {
         }
       }
 
-      // Fetch from Firestore
       const projectsCol = collection(db, "projects");
       const projectSnapshot = await getDocs(projectsCol);
       const projectsList = projectSnapshot.docs.map((doc) => ({
@@ -50,7 +62,7 @@ const EngineerDashboard = () => {
       })) as Project[];
 
       setProjects(projectsList);
-      storeProjects(projectsList); // Cache result
+      storeProjects(projectsList);
     } catch (err) {
       console.error("Error fetching projects:", err);
       setError("Failed to load projects. Please try again.");
@@ -60,14 +72,13 @@ const EngineerDashboard = () => {
     }
   }, []);
 
-
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchProjects(true); // Force refresh on swipe
+    fetchProjects(true);
   }, [fetchProjects]);
 
   const navigateToReportForm = (projectId: string) => {
@@ -86,7 +97,8 @@ const EngineerDashboard = () => {
     <View className="flex-1 bg-[hsl(60,4.8%,95.9%)]">
       {!isOnline && <OfflineBanner />}
 
-      <View className="bg-[hsl(47.9,95.8%,53.1%)] p-4 pt-12">
+      {/* Header */}
+      <View className="bg-white p-4 pt-12 pb-4 shadow-md">
         <View className="flex-row justify-between items-center">
           <Text className="text-[hsl(26,83.3%,14.1%)] text-2xl font-bold">
             Projects
@@ -94,43 +106,68 @@ const EngineerDashboard = () => {
           <View className="flex-row">
             <TouchableOpacity
               onPress={navigateToNotifications}
-              className="mr-4"
+              className="mr-4 p-2 rounded-full bg-[#f8d12d]"
             >
-              <Bell color="hsl(26,83.3%,14.1%)" size={24} />
+              <Bell color="#3a2100" size={22} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={navigateToSettings}>
-              <Settings color="hsl(26,83.3%,14.1%)" size={24} />
+            <TouchableOpacity
+              onPress={navigateToSettings}
+              className="p-2 rounded-full bg-[#f8d12d]"
+            >
+              <Settings color="#3a2100" size={22} />
             </TouchableOpacity>
           </View>
         </View>
       </View>
 
+      {/* Project List */}
       <ScrollView
         className="flex-1 p-4"
+        contentContainerStyle={{ paddingBottom: 16 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={["hsl(26,83.3%,14.1%)"]}
+            tintColor={"hsl(26,83.3%,14.1%)"}
+          />
         }
       >
-        {loading && <ActivityIndicator size="large" color="hsl(26,83.3%,14.1%)" />}
-        {error && <Text className="text-red-500 text-center mb-4">{error}</Text>}
-
-        {!loading && !error && projects.length === 0 && (
-          <Text className="text-[hsl(25,5.3%,44.7%)] text-center">No projects found.</Text>
+        {loading && (
+          <ActivityIndicator size="large" color="hsl(26,83.3%,14.1%)" />
+        )}
+        {error && (
+          <Text className="text-red-500 text-center mb-4">{error}</Text>
         )}
 
-        {!loading && !error && projects.map((project) => (
-          <TouchableOpacity
-            key={project.id}
-            className="border border-gray-300 bg-white rounded-xl p-4 mb-3 flex-row justify-between items-center"
-            onPress={() => navigateToReportForm(project.id)}
-          >
-            <View>
-              <Text className="font-bold text-lg text-[hsl(26,83.3%,14.1%)]">{project.name}</Text>
-              <Text className="text-[hsl(25,5.3%,44.7%)]">{project.location}</Text>
-            </View>
-            <PlusCircle color="hsl(47.9,95.8%,53.1%)" size={24} />
-          </TouchableOpacity>
-        ))}
+        {!loading && !error && projects.length === 0 && (
+          <Text className="text-[hsl(25,5.3%,44.7%)] text-center">
+            No projects found.
+          </Text>
+        )}
+
+        {!loading &&
+          !error &&
+          projects.map((project, index) => (
+            <TouchableOpacity
+              key={project.id}
+              className="rounded-lg p-5 mb-4 shadow-sm flex-row justify-between items-center border border-gray-200"
+              style={{ backgroundColor: getRandomColor(index) }}
+              onPress={() => navigateToReportForm(project.id)}
+              activeOpacity={0.7}
+            >
+              <View className="flex-1 mr-4">
+                <Text className="font-bold text-lg text-[hsl(26,83.3%,14.1%)] mb-1">
+                  {project.name}
+                </Text>
+                <Text className="text-[hsl(25,5.3%,44.7%)]">
+                  <Text>📍 </Text>
+                  <Text>{project.location}</Text>
+                </Text>
+              </View>
+              <PlusCircle color="hsl(26,83.3%,14.1%)" size={24} />
+            </TouchableOpacity>
+          ))}
       </ScrollView>
     </View>
   );
