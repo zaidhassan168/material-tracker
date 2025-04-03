@@ -3,6 +3,7 @@ import { Timestamp, addDoc, collection, getDocs } from "firebase/firestore";
 
 interface ReportData {
     projectId: string;
+    projectName: string;
     materialType: string;
     quantity: string;
     notes: string;

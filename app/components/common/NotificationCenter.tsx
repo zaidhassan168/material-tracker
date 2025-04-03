@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,87 +15,87 @@ import {
   Clock,
   Trash2,
 } from "lucide-react-native";
+import {
+  fetchUserNotifications,
+  markNotificationAsRead,
+} from "../../utils/notifications";
 
-const NotificationCenter = () => {
-  const [refreshing, setRefreshing] = useState(false);
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      type: "shortage",
-      title: "High Priority Shortage",
-      message: "Concrete Mix shortage reported at Downtown Highrise",
-      time: "10 minutes ago",
-      read: false,
-      priority: "high",
-    },
-    {
-      id: 2,
-      type: "status",
-      title: "Status Update",
-      message: "Steel Rebar shortage has been marked as resolved",
-      time: "2 hours ago",
-      read: true,
-      priority: "medium",
-    },
-    {
-      id: 3,
-      type: "assignment",
-      title: "New Project Assignment",
-      message: "You have been assigned to Westside Mall project",
-      time: "Yesterday",
-      read: true,
-      priority: "low",
-    },
-    {
-      id: 4,
-      type: "system",
-      title: "System Maintenance",
-      message: "The system will be down for maintenance on Sunday from 2-4 AM",
-      time: "2 days ago",
-      read: true,
-      priority: "low",
-    },
-  ]);
+// Define a Notification interface based on the data structure
+interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  seen?: boolean;
+  createdAt: { seconds: number } | Date;
+  type: "shortage" | "status" | "assignment" | string;
+  priority: "High" | "Medium" | "Low" | string;
+  reportId?: string;
+}
 
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    // Simulate fetching data
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+const NotificationCenter: React.FC = () => {
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const loadNotifications = async () => {
+
+    const data = await fetchUserNotifications();
+    console.log("Fetched notifications:", data);
+    // Assuming the fetched data conforms to Notification interface structure
+    setNotifications(data as Notification[]);
+  };
+
+  useEffect(() => {
+    loadNotifications();
   }, []);
 
-  const markAsRead = (id: number) => {
-    setNotifications(
-      notifications.map((notification) =>
-        notification.id === id ? { ...notification, read: true } : notification,
-      ),
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadNotifications();
+    setRefreshing(false);
+  }, []);
+
+  const handlePress = async (notification: Notification) => {
+    if (!notification.seen) {
+      await markNotificationAsRead(notification.id);
+      setNotifications((prevNotifications) =>
+        prevNotifications.map((n) =>
+          n.id === notification.id ? { ...n, seen: true } : n
+        )
+      );
+    }
+
+    if (notification.reportId) {
+      const path: string = `/manager/reports/${notification.reportId}`;
+      router.push(path as any);
+    }
+  };
+
+  const deleteNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    // optionally delete from Firestore
+  };
+
+  const markAllAsRead = async () => {
+    const unread = notifications.filter((n) => !n.seen);
+    await Promise.all(unread.map((n) => markNotificationAsRead(n.id)));
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, seen: true }))
     );
+
   };
 
-  const deleteNotification = (id: number) => {
-    setNotifications(
-      notifications.filter((notification) => notification.id !== id),
-    );
-  };
+  const clearAll = () => setNotifications([]);
 
-  const markAllAsRead = () => {
-    setNotifications(
-      notifications.map((notification) => ({ ...notification, read: true })),
-    );
-  };
-
-  const clearAll = () => {
-    setNotifications([]);
-  };
-
-  const getNotificationIcon = (type: string, priority: string) => {
+  const getNotificationIcon = (
+    type: Notification["type"],
+    priority: Notification["priority"]
+  ) => {
     switch (type) {
       case "shortage":
         return (
           <AlertTriangle
             size={20}
-            color={priority === "high" ? "#DC2626" : "#EA580C"}
+            color={priority === "High" ? "#DC2626" : "#EA580C"}
           />
         );
       case "status":
@@ -107,22 +107,27 @@ const NotificationCenter = () => {
     }
   };
 
-  const getNotificationStyle = (read: boolean, priority: string) => {
+  const getNotificationStyle = (read: boolean | undefined, priority: Notification["priority"]) => {
     let bgColor = read ? "bg-white" : "bg-blue-50";
-
-    if (!read && priority === "high") {
-      bgColor = "bg-red-50";
-    }
-
+    if (!read && priority === "High") bgColor = "bg-red-50";
     return bgColor;
   };
 
-  const unreadCount = notifications.filter(
-    (notification) => !notification.read,
-  ).length;
+  const formatDate = (createdAt: { seconds: number } | Date): string => {
+    if ((createdAt as { seconds: number }).seconds) {
+      return new Date((createdAt as { seconds: number }).seconds * 1000).toLocaleString();
+    } else if (createdAt instanceof Date) {
+      return createdAt.toLocaleString();
+    } else {
+      return "Unknown date";
+    }
+  };
+
+  const unreadCount = notifications.filter((n) => !n.seen).length;
 
   return (
     <View className="flex-1 bg-gray-100">
+      {/* Header */}
       <View className="bg-blue-600 p-4 pt-12 flex-row items-center justify-between">
         <View className="flex-row items-center">
           <TouchableOpacity onPress={() => router.back()} className="mr-4">
@@ -143,8 +148,7 @@ const NotificationCenter = () => {
       {unreadCount > 0 && (
         <View className="bg-blue-100 p-3">
           <Text className="text-blue-800 text-center">
-            You have {unreadCount} unread notification
-            {unreadCount !== 1 ? "s" : ""}
+            You have {unreadCount} unread notification{unreadCount !== 1 ? "s" : ""}
           </Text>
         </View>
       )}
@@ -169,21 +173,16 @@ const NotificationCenter = () => {
           notifications.map((notification) => (
             <TouchableOpacity
               key={notification.id}
-              className={`p-4 border-b border-gray-200 ${getNotificationStyle(notification.read, notification.priority)}`}
-              onPress={() => markAsRead(notification.id)}
+              className={`p-4 border-b border-gray-200 ${getNotificationStyle(notification.seen, notification.priority)}`}
+              onPress={() => handlePress(notification)}
             >
               <View className="flex-row">
                 <View className="mr-3 mt-1">
-                  {getNotificationIcon(
-                    notification.type,
-                    notification.priority,
-                  )}
+                  {getNotificationIcon(notification.type, notification.priority)}
                 </View>
                 <View className="flex-1">
                   <View className="flex-row justify-between">
-                    <Text
-                      className={`font-bold ${!notification.read ? "text-black" : "text-gray-700"}`}
-                    >
+                    <Text className={`font-bold ${!notification.seen ? "text-black" : "text-gray-700"}`}>
                       {notification.title}
                     </Text>
                     <TouchableOpacity
@@ -192,13 +191,11 @@ const NotificationCenter = () => {
                       <Trash2 size={16} color="#6B7280" />
                     </TouchableOpacity>
                   </View>
-                  <Text
-                    className={`mt-1 ${!notification.read ? "text-gray-800" : "text-gray-600"}`}
-                  >
+                  <Text className={`mt-1 ${!notification.seen ? "text-gray-800" : "text-gray-600"}`}>
                     {notification.message}
                   </Text>
                   <Text className="text-gray-500 text-sm mt-2">
-                    {notification.time}
+                    {formatDate(notification.createdAt)}
                   </Text>
                 </View>
               </View>

@@ -49,6 +49,7 @@ const ShortageReportForm = () => {
     try {
       const reportId = await submitShortageReport({
         projectId,
+        projectName, // <-- ADD THIS
         materialType: material.name,
         quantity,
         notes,
