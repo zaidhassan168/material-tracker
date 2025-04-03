@@ -4,24 +4,102 @@ import { useFonts } from "expo-font";
 import { Slot, router, useSegments } from "expo-router"; // Removed Stack, Added Slot, router, useSegments
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import * as SecureStore from "expo-secure-store";
+import { useEffect } from "react"; // Removed useState as it's not used directly here
 import "react-native-reanimated";
+import { Platform, ActivityIndicator, View } from "react-native"; // Ensure Platform is imported
 import "../global.css";
 import { doc, getDoc } from "firebase/firestore";
-import { Platform, ActivityIndicator, View } from "react-native";
+// Removed duplicate import of Platform, ActivityIndicator, View
 import { registerForPushNotificationsAsync } from "./config/notifications";
 import * as Notifications from "expo-notifications";
 
 SplashScreen.preventAutoHideAsync();
 
-// Helper function to determine if a route is protected
-const isProtectedRoute = (segments: string[]) => {
-  const publicRoutes = ['index', 'signup'];
-  if (segments.length === 0) {
-    return false;
+// Define the token cache using expo-secure-store for native, localStorage for web
+const tokenCache = {
+  async getToken(key: string): Promise<string | null> {
+    console.log(`[TokenCache] Attempting getToken for key: ${key} on Platform: ${Platform.OS}`);
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const value = localStorage.getItem(key);
+          console.log(`[TokenCache] Web getToken ${key}: ${value ? 'Retrieved' : 'Not Found'}`);
+          return value;
+        }
+        console.log(`[TokenCache] Web getToken ${key}: localStorage undefined`);
+        return null;
+      } catch (err) {
+        console.error("[TokenCache] Web getToken error:", err);
+        return null;
+      }
+    } else {
+      try {
+        const item = await SecureStore.getItemAsync(key);
+        console.log(`[TokenCache] Native getToken ${key}: ${item ? 'Retrieved' : 'Not Found'}`);
+        return item;
+      } catch (error) {
+        console.error("[TokenCache] Native getToken error:", error);
+        return null; // Ensure null is returned on error
+      }
+    }
+  },
+  async saveToken(key: string, value: string): Promise<void> {
+    console.log(`[TokenCache] Attempting saveToken for key: ${key} on Platform: ${Platform.OS}`);
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(key, value);
+          console.log(`[TokenCache] Web saveToken ${key}: Stored successfully`);
+        } else {
+          console.log(`[TokenCache] Web saveToken ${key}: localStorage undefined`);
+        }
+      } catch (err) {
+        console.error("[TokenCache] Web saveToken error:", err);
+      }
+    } else {
+      try {
+        await SecureStore.setItemAsync(key, value);
+        console.log(`[TokenCache] Native saveToken ${key}: Stored successfully`);
+      } catch (error) {
+        console.error("[TokenCache] Native saveToken error:", error);
+        // Don't throw, just log the error. Clerk might handle this internally.
+      }
+    }
+  },
+  async deleteToken(key: string): Promise<void> {
+    console.log(`[TokenCache] Attempting deleteToken for key: ${key} on Platform: ${Platform.OS}`);
+    if (Platform.OS === 'web') {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem(key);
+          console.log(`[TokenCache] Web deleteToken ${key}: Deleted successfully`);
+        } else {
+          console.log(`[TokenCache] Web deleteToken ${key}: localStorage undefined`);
+        }
+      } catch (err) {
+        console.error("[TokenCache] Web deleteToken error:", err);
+      }
+    } else {
+      try {
+        await SecureStore.deleteItemAsync(key);
+        console.log(`[TokenCache] Native deleteToken ${key}: Deleted successfully`);
+      } catch (error) {
+        console.error("[TokenCache] Native deleteToken error:", error);
+        // Don't throw, just log the error.
+      }
+    }
   }
-  return !publicRoutes.includes(segments[0]);
 };
+
+// Helper function to determine if a route is protected - MOVED INSIDE AuthStateHandler
+// const isProtectedRoute = (segments: string[]) => {
+//   const publicRoutes = ['index', 'signup'];
+//   if (segments.length === 0) {
+//     return false;
+//   }
+//   return !publicRoutes.includes(segments[0]);
+// };
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -31,7 +109,10 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
-    <ClerkProvider publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY}>
+    <ClerkProvider
+      tokenCache={tokenCache}
+      publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY}
+    >
       <AuthStateHandler loaded={loaded} />
     </ClerkProvider>
   );
@@ -45,6 +126,16 @@ function AuthStateHandler({ loaded }: AuthStateHandlerProps) {
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
   const segments = useSegments();
+
+  // Helper function moved inside the component
+  const isProtectedRoute = (segments: string[]) => {
+    // Add 'complete-profile' to the list of public routes
+    const publicRoutes = ['index', 'signup', 'complete-profile'];
+    if (segments.length === 0) {
+      return false;
+    }
+    return !publicRoutes.includes(segments[0]);
+  };
 
   // Tempo Devtools Initialization (only on web)
   useEffect(() => {
@@ -79,7 +170,7 @@ function AuthStateHandler({ loaded }: AuthStateHandlerProps) {
   useEffect(() => {
     // Directly access role from Clerk metadata
     const userRole = user?.publicMetadata?.role as string | undefined; // Get role from metadata
-    const inProtectedRoute = isProtectedRoute(segments);
+    const inProtectedRoute: boolean = isProtectedRoute(segments); // Explicitly type annotation
     // Adjust readyToRedirect logic if needed, isRoleLoading is removed
     const readyToRedirect = loaded && isLoaded;
 

@@ -17,12 +17,16 @@ import { router } from "expo-router";
 import { Lock, Mail, Eye, EyeOff } from "lucide-react-native";
 import { useOAuth, useSignIn } from "@clerk/clerk-expo";
 import * as WebBrowser from "expo-web-browser";
+import * as Linking from 'expo-linking';
+// Removed useWarmUpBrowser import as it's not available
 
 WebBrowser.maybeCompleteAuthSession();
 
 const LoginScreen = () => {
     const { signIn, setActive, isLoaded } = useSignIn();
     const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
+
+    // Removed useWarmUpBrowser usage
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -65,23 +69,59 @@ const LoginScreen = () => {
     };
 
     const handleGoogleSignIn = async () => {
+        if (!isLoaded) {
+            console.log("Clerk not loaded yet, aborting Google Sign In.");
+            return;
+        }
         try {
-            if (!isLoaded) return;
-            const { createdSessionId, setActive: googleSetActive } = await startOAuthFlow();
-            if (createdSessionId) {
-                if (googleSetActive) {
-                    await googleSetActive({ session: createdSessionId });
-                } else {
-                    console.error("googleSetActive is undefined.");
-                }
-                console.log("Clerk Google Sign In Successful");
-            } else {
-                console.log("Google OAuth did not create a session directly.");
+            setLoading(true); // Indicate loading state
+            setError(""); // Clear previous errors
+
+            // const redirectUrl = Linking.createURL('/auth/callback'); // Generate the redirect URL dynamically - REMOVED
+            console.log("Starting Google OAuth with default redirect handling");
+
+            // Let Clerk handle the redirect automatically by not passing redirectUrl
+            const { createdSessionId, setActive: googleSetActive, signUp, signIn: googleSignIn } = await startOAuthFlow();
+
+            console.log("Google OAuth flow response:", { createdSessionId, hasSetActive: !!googleSetActive, signUp, signIn: googleSignIn }); // Keep signIn for logging
+
+            if (createdSessionId && googleSetActive) {
+                await googleSetActive({ session: createdSessionId });
+                console.log("Clerk Google Sign In Successful - Session Activated");
+                // Navigation should be handled by the RootLayout effect hook
+            } else if (signUp?.verifications?.externalAccount) {
+                // This indicates a new user sign-up might need verification or completion steps.
+                // Clerk often handles the redirect back automatically to complete this.
+                // This indicates a new user sign-up might need verification or completion steps.
+                // Clerk often handles the redirect back automatically to complete this.
+                // If it lands back here without a session, the redirect/linking might be the issue.
+                console.log("Google OAuth completed sign-up flow, redirecting to complete profile.");
+                // IMPORTANT: Redirect to the profile completion screen
+                router.replace("/complete-profile");
+                // We don't activate session here, it will happen after profile completion.
+                return; // Stop further execution in this handler
+            } else if (googleSignIn) {
+                // Existing user signing in via OAuth or linking account
+                // The structure might not have 'verifications' directly here for OAuth sign-in
+                console.log("Google OAuth completed sign-in flow for existing user.");
             }
-        } catch (err) {
+            else {
+                // If no session and no sign-up info, something might be wrong with the redirect or configuration.
+                console.warn("Google OAuth finished, but no session ID was created directly and no sign-up info returned. Check redirect/linking.");
+                setError("OAuth flow completed, but failed to activate session.");
+            }
+        } catch (err: any) {
             console.error("Clerk Google OAuth error:", JSON.stringify(err, null, 2));
-            Alert.alert("Authentication Error", "Failed to sign in with Google. Please try again.");
-            setError("Failed to sign in with Google.");
+            // Check for specific error types if needed
+            if (err.errors?.[0]?.code === 'oauth_callback_error') {
+                Alert.alert("Authentication Error", "There was an issue processing the callback from Google. Please ensure your redirect URIs are configured correctly in Clerk and Google Cloud Console.");
+                setError("OAuth callback error. Check configuration.");
+            } else {
+                Alert.alert("Authentication Error", "Failed to sign in with Google. Please try again.");
+                setError("Failed to sign in with Google.");
+            }
+        } finally {
+            setLoading(false); // Stop loading indicator
         }
     };
 
