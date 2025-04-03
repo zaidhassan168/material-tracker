@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "test-tempo",
+    "name": "ekTrackEz",
     "slug": "material-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/without.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -18,10 +18,14 @@
     "android": {
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/without.png",
         "backgroundColor": "#ffffff"
       },
-      "useNextNotificationsApi": true
+      "useNextNotificationsApi": true,
+      "permissions": [
+        "NOTIFICATIONS",
+        "VIBRATE"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -42,8 +46,9 @@
       ]
     ],
     "notification": {
-      "icon": "./assets/images/notification-icon.png",
-      "color": "#ffffff"
+      "icon": "./assets/images/without.png",
+      "color": "#ffffff",
+      "vibrate": true
     },
     "experiments": {
       "typedRoutes": true

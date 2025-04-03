@@ -13,6 +13,7 @@ import { doc, getDoc } from "firebase/firestore";
 // Removed duplicate import of Platform, ActivityIndicator, View
 import { registerForPushNotificationsAsync } from "./config/notifications";
 import * as Notifications from "expo-notifications";
+import * as Haptics from 'expo-haptics'; // Import Haptics
 
 SplashScreen.preventAutoHideAsync();
 
@@ -157,12 +158,28 @@ function AuthStateHandler({ loaded }: AuthStateHandlerProps) {
       }
     });
 
-    const subscription = Notifications.addNotificationReceivedListener(notification => {
-      console.log("Notification received:", notification);
+    // Listener for incoming notifications
+    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
+      console.log("Foreground Notification received:", notification);
+      // Trigger haptic feedback (vibration)
+      Haptics.notificationAsync(
+        Haptics.NotificationFeedbackType.Success // Or .Warning / .Error depending on notification type
+      );
     });
 
+    // Listener for notification responses (user taps on notification)
+    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log("Notification response received:", response);
+      // Handle navigation or other actions based on the response
+      // Example: const { data } = response.notification.request.content; router.push(data.url);
+    });
+
+
     return () => {
-      subscription.remove();
+      // Clean up listeners when the component unmounts
+      Notifications.removeNotificationSubscription(notificationListener);
+      Notifications.removeNotificationSubscription(responseListener);
+      // subscription.remove(); // Removed incorrect cleanup call
     };
   }, []);
 

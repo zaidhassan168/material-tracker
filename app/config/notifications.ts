@@ -7,8 +7,8 @@ import { doc, updateDoc } from 'firebase/firestore';
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
+    shouldPlaySound: true, // Enable sound for foreground notifications
+    shouldSetBadge: false, // Keep badge setting as is (usually false unless you need it)
   }),
 });
 
