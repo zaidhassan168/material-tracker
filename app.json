@@ -9,23 +9,18 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "googleServicesFile": "./GoogleService-Info.plist",
-      "supportsTablet": true,
-      "permissions": [
-        "notifications"
-      ]
+      "supportsTablet": true
     },
     "android": {
-      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/without.png",
         "backgroundColor": "#ffffff"
       },
-      "useNextNotificationsApi": true,
       "permissions": [
         "NOTIFICATIONS",
         "VIBRATE"
-      ]
+      ],
+      "package": "com.zaidhassan71.materialtracker"
     },
     "web": {
       "bundler": "metro",
@@ -47,8 +42,7 @@
     ],
     "notification": {
       "icon": "./assets/images/small.png",
-      "color": "#ffffff",
-      "vibrate": true
+      "color": "#ffffff"
     },
     "experiments": {
       "typedRoutes": true
